@@ -154,11 +154,11 @@ class Request {
             // 400 Bad Request - 通常是参数错误或业务错误
             const errorMsg = responseData.detail || responseData.message || responseData.msg || '请求参数错误'
             const errorMsgStr = typeof errorMsg === 'string' ? errorMsg : String(errorMsg)
-            
+
             // 检查是否是联创晋升相关的错误（已达到最高等级或条件未达标），这些错误不需要显示
-            const isUniLevelPromoteError = options.url && options.url.includes('/unilevel/promote') && 
+            const isUniLevelPromoteError = options.url && options.url.includes('/unilevel/promote') &&
               (errorMsgStr.includes('已到达最高等级') || errorMsgStr.includes('条件未达标') || errorMsgStr.includes('无法晋升'))
-            
+
             if (!isUniLevelPromoteError) {
               console.error('[400错误] 请求参数或业务错误:', {
                 statusCode: res.statusCode,
@@ -182,7 +182,7 @@ class Request {
               const isMethodError = typeof errorMsgStr === 'string' && /require\s*POST|POST\s*method|method\s*not\s*allowed/i.test(errorMsgStr)
               this.handleError(isMethodError ? '加载失败，请重试' : errorMsg)
             }
-            
+
             reject({
               code: 400,
               statusCode: 400,
@@ -369,6 +369,8 @@ class Request {
     setTimeout(() => {
       uni.reLaunch({
         url: '/pages/index/index'
+      }).catch(err => {
+        console.error('[跳转失败] reLaunch to login failed:', err)
       })
     }, 2000)
   }

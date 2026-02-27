@@ -10,9 +10,15 @@ export const bindBankCard = (data) => {
   return request.post('/api/bankcard/bind', data)
 }
 
-/** 发送短信验证码（测试环境返回 123456） */
-export const sendBankCardSms = (account_number) => {
-  const body = `account_number=${encodeURIComponent(account_number)}`
+/** 发送短信验证码（测试环境返回 123456）
+ * @param {String} account_number 银行卡号
+ * @param {String} [mobile] 接收验证码手机号（用户填写）
+ */
+export const sendBankCardSms = (account_number, mobile) => {
+  let body = `account_number=${encodeURIComponent(account_number)}`
+  if (mobile && String(mobile).trim()) {
+    body += `&mobile=${encodeURIComponent(String(mobile).trim())}`
+  }
   return request.post('/api/bankcard/sms/send', body, {
     header: { 'Content-Type': 'application/x-www-form-urlencoded' }
   })

@@ -6,7 +6,7 @@
     </view>
 
     <!-- 订单信息（参照积分确认订单页格式） -->
-    <view v-else-if="orderData || rawOrderResponse" class="order-body" key="order">
+    <view v-else-if="orderData" class="order-body" key="order">
       <view v-if="!orderData" class="order-error-tip">接口返回异常或需登录，请核对后重试</view>
 
       <template v-if="orderData">
@@ -83,6 +83,30 @@
           </view>
         </view>
 
+        <!-- 积分抵扣（非会员商品可用，1积分=1元） -->
+        <view class="points-section">
+          <view class="section-header">
+            <text class="section-title">积分抵扣</text>
+            <text class="available-points">可用 {{ userPointsBalance }} 积分</text>
+          </view>
+          <view class="points-row">
+            <text class="input-label">使用积分</text>
+            <input
+              class="points-input"
+              type="digit"
+              v-model.number="pointsToUse"
+              placeholder="0"
+              :disabled="userPointsBalance === 0 || maxPointsDiscount <= 0"
+              @input="onPointsInput"
+            />
+            <button class="use-max-btn" type="button" @tap="useMaxPoints" :disabled="userPointsBalance === 0 || maxPointsDiscount <= 0">全部使用</button>
+          </view>
+          <view class="points-tips">
+            <text class="tip-item">• 最多可抵扣 {{ formatAmount(maxPointsDiscount) }} 积分（1积分=1元，最多抵扣原价的 50%）</text>
+            <text class="tip-item">• 非会员商品可使用积分</text>
+          </view>
+        </view>
+
         <!-- 支付方式（与积分确认订单的配送方式样式一致） -->
         <view class="delivery-way-section">
           <view class="section-header">
@@ -116,6 +140,10 @@
             <text class="detail-label">优惠抵扣</text>
             <text class="detail-value">-¥{{ formatAmount(couponDiscount) }}</text>
           </view>
+          <view v-if="pointsToUse > 0" class="detail-row discount">
+            <text class="detail-label">积分抵扣</text>
+            <text class="detail-value">-¥{{ formatAmount(pointsDiscount) }}</text>
+          </view>
           <view class="detail-row total">
             <text class="detail-label">实际支付</text>
             <text class="detail-value">¥{{ formatAmount(actualPayAmount) }}</text>
@@ -141,17 +169,6 @@
           </button>
         </view>
       </template>
-
-      <!-- 订单详情接口返回（收起放在底部） -->
-      <view v-if="rawOrderResponse" class="raw-response-card">
-        <view class="raw-response-header" @tap="showRawResponse = !showRawResponse">
-          <text class="raw-response-title">订单详情接口返回</text>
-          <text class="raw-response-toggle">{{ showRawResponse ? '收起' : '展开' }}</text>
-        </view>
-        <scroll-view v-if="showRawResponse" scroll-y class="raw-response-body">
-          <text class="raw-response-text" :user-select="true">{{ rawResponseText }}</text>
-        </scroll-view>
-      </view>
     </view>
 
     <!-- 支付结果弹窗（与支付页一致） -->
@@ -171,7 +188,7 @@
     </view>
 
     <!-- 错误提示（无订单号、加载失败或接口异常时显示） -->
-    <view v-else-if="!loading && !orderData && !rawOrderResponse" class="error-container">
+    <view v-else-if="!loading && !orderData" class="error-container">
       <text class="error-icon">⚠️</text>
       <text class="error-text">{{ errorMessage || '订单信息加载失败' }}</text>
       <text class="error-hint">请重新扫码或点击下方按钮返回</text>
@@ -182,11 +199,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getPendingReferrer } from '@/utils/referral.js'
 import { getOfflineOrderDetail, getOrderDetail, offlinePayUnified } from '@/api/order.js'
 import { getMyCoupons } from '@/api/coupon.js'
+import { getPointsBalance } from '@/api/points.js'
 
 // 其余 API 按需动态 import
 let payOrder = null
@@ -221,11 +239,18 @@ const couponLoading = ref(false)
 const selectedCoupon = ref(null)
 
 const orderAmount = computed(() => Number(orderData.value?.total_amount ?? orderData.value?.amount ?? 0))
-const userPoints = computed(() => {
-  const u = uni.getStorageSync('userInfo') || {}
-  return Number(u.points ?? u.points_balance ?? u.member_points ?? u.total_points ?? 0)
-})
+const userPointsBalance = ref(0)
+const pointsToUse = ref(0)
 const orderEarnPoints = computed(() => Number(orderData.value?.earn_points ?? orderData.value?.earnPoints ?? 0))
+const maxPointsDiscount = computed(() => {
+  const amt = orderAmount.value
+  if (amt <= 0) return 0
+  // 最多抵扣「原价的 50%」，且不能超过用户积分余额
+  const half = amt * 0.5
+  return Math.min(userPointsBalance.value, half)
+})
+const pointsDiscount = computed(() => Math.min(pointsToUse.value, maxPointsDiscount.value))
+const actualPayAmount = computed(() => Math.max(0, orderAmount.value - couponDiscount.value - pointsDiscount.value))
 const rawResponseText = computed(() => {
   const r = rawOrderResponse.value
   if (r == null) return '暂无数据'
@@ -240,7 +265,6 @@ const couponDiscount = computed(() => {
   const amt = couponAmount(selectedCoupon.value)
   return Math.min(amt, orderAmount.value)
 })
-const actualPayAmount = computed(() => Math.max(0, orderAmount.value - couponDiscount.value))
 const availableCoupons = computed(() => {
   const amount = orderAmount.value
   const now = Date.now()
@@ -265,6 +289,42 @@ function selectCoupon(c) {
 function clearCoupon() {
   selectedCoupon.value = null
 }
+
+function onPointsInput(e) {
+  const v = e.detail?.value ?? e.target?.value ?? ''
+  const n = parseInt(String(v).replace(/\D/g, ''), 10)
+  if (isNaN(n) || n < 0) {
+    pointsToUse.value = 0
+    return
+  }
+  pointsToUse.value = Math.min(n, maxPointsDiscount.value)
+}
+function useMaxPoints() {
+  pointsToUse.value = maxPointsDiscount.value
+}
+
+/**
+ * 加载用户积分余额
+ */
+async function loadUserPoints() {
+  const token = uni.getStorageSync('token')
+  if (!token) return
+  try {
+    const res = await getPointsBalance()
+    const pts = res.data?.total_points ?? res.data?.member_points ?? res.data?.points ?? res.data?.balance ?? 0
+    userPointsBalance.value = Number(pts)
+    if (pointsToUse.value > userPointsBalance.value || pointsToUse.value > maxPointsDiscount.value) {
+      pointsToUse.value = Math.min(userPointsBalance.value, maxPointsDiscount.value)
+    }
+  } catch (e) {
+    console.warn('[线下支付] 加载积分失败', e)
+    userPointsBalance.value = 0
+  }
+}
+
+watch(maxPointsDiscount, (maxVal) => {
+  if (pointsToUse.value > maxVal) pointsToUse.value = maxVal
+})
 
 // 线下支付只保留微信支付
 const paymentMethods = [
@@ -444,6 +504,13 @@ const loadOrder = async () => {
     }
     if (order && !order.order_no && no) order.order_no = no
 
+    // 线下订单接口返回的 amount 单位为「分」，需转为「元」再展示和支付
+    const isOfflineAmountFen = /^OFF/i.test(order?.order_no || no) || /^P\d+/i.test(order?.order_no || no)
+    if (isOfflineAmountFen && order) {
+      if (order.amount != null && typeof order.amount === 'number') order.amount = order.amount / 100
+      if (order.total_amount != null && typeof order.total_amount === 'number') order.total_amount = order.total_amount / 100
+    }
+
     orderData.value = order
     console.log('[线下支付] 订单加载成功:', order)
     loading.value = false
@@ -451,6 +518,7 @@ const loadOrder = async () => {
       console.log('[线下支付] 已置 loading=false，orderData 已设置，应显示订单内容')
     })
     loadCoupons()
+    loadUserPoints()
 
     // 检查订单状态（支持数字 0/1 表示待支付）
     if (!isPendingStatus(order.status)) {
@@ -518,13 +586,14 @@ const handlePayment = async () => {
     const amount = actualPayAmount.value
     const couponId = selectedCoupon.value ? selectedCoupon.value.id : null
 
+    const pts = pointsToUse.value > 0 ? pointsToUse.value : null
     // 根据选择的支付方式处理（使用抵扣后应付金额）
     if (selectedMethod.value === 1) {
-      await handleWechatPay(orderNumber, amount, couponId)
+      await handleWechatPay(orderNumber, amount, couponId, pts)
     } else if (selectedMethod.value === 2) {
       uni.showToast({ title: '支付宝支付暂未开通', icon: 'none' })
     } else if (selectedMethod.value === 3) {
-      await handleBalancePay(orderNumber, amount, couponId)
+      await handleBalancePay(orderNumber, amount, couponId, pts)
     }
   } catch (error) {
     console.error('[线下支付] 支付失败:', error)
@@ -540,7 +609,7 @@ const handlePayment = async () => {
 /**
  * 微信支付（与正常购物支付页一致：多来源获取 openid + 刷新用户信息回退）
  */
-const handleWechatPay = async (orderNumber, amount, couponId = null) => {
+const handleWechatPay = async (orderNumber, amount, couponId = null, pointsToUseVal = null) => {
   const { refreshUserInfo, getUserInfo } = await import('@/api/user.js')
 
   const parseMaybeJson = (v) => {
@@ -608,11 +677,19 @@ const handleWechatPay = async (orderNumber, amount, couponId = null) => {
     throw new Error('无法获取微信用户信息，请重新登录')
   }
 
-  // 线下收银支付：统一下单，传 openid + user_id 供后端校验「用户已绑定微信」或完成绑定
+  // 线下统一下单：传 openid、user_id、total_fee(分)，后端必须把 total_fee 传给微信统一下单
   const userInfo = uni.getStorageSync('userInfo') || {}
   const userId = userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid ?? null
-  console.log('[线下支付] 调起统一下单 /api/offline/zhifu/tongyi', { order_no: orderNumber, coupon_id: couponId, has_openid: !!openid, user_id: userId })
-  const res = await offlinePayUnified(orderNumber, couponId, openid, userId)
+  let totalFeeFen = Math.round((Number(amount) || 0) * 100)
+  if (totalFeeFen <= 0 && orderData.value) {
+    const fallbackYuan = Number(orderData.value.total_amount ?? orderData.value.amount ?? 0)
+    totalFeeFen = Math.round(fallbackYuan * 100)
+  }
+  if (totalFeeFen <= 0) {
+    throw new Error('订单金额异常，无法发起支付')
+  }
+  console.log('[线下支付] 调起 /api/offline/zhifu/tongyi', { order_no: orderNumber, total_fee: totalFeeFen, openid: !!openid, user_id: userId })
+  const res = await offlinePayUnified(orderNumber, couponId, openid, userId, totalFeeFen)
 
   // 检查返回结果
   const payParams =
@@ -624,24 +701,34 @@ const handleWechatPay = async (orderNumber, amount, couponId = null) => {
     res?.data ||
     res
 
+  console.log('[线下支付] 统一下单完整响应:', JSON.stringify(res, null, 2))
+  console.log('[线下支付] 解析出的 payParams:', JSON.stringify(payParams, null, 2))
+
   if (!payParams.timeStamp || !payParams.nonceStr || !payParams.package || !payParams.paySign) {
     throw new Error('支付参数错误，请重试')
   }
 
+  // wx.requestPayment 只接受 6 个字段，不要传入 total_fee 等多余参数
+  const wxPayOnly = {
+    provider: 'wxpay',
+    timeStamp: String(payParams.timeStamp),
+    nonceStr: payParams.nonceStr,
+    package: payParams.package || payParams.packageValue,
+    signType: payParams.signType || 'MD5',
+    paySign: payParams.paySign
+  }
+
+  console.log('[线下支付] 调用 wx.requestPayment 参数:', wxPayOnly)
+
   await ensureApis()
-  // 调起微信支付（与正常支付页一致）
   await new Promise((resolve, reject) => {
     uni.requestPayment({
-      provider: 'wxpay',
-      timeStamp: String(payParams.timeStamp),
-      nonceStr: payParams.nonceStr,
-      package: payParams.package || payParams.packageValue,
-      signType: payParams.signType || 'MD5',
-      paySign: payParams.paySign,
+      ...wxPayOnly,
       success: async (payRes) => {
         console.log('[线下支付] 微信支付成功:', payRes)
         try {
-          await payOrder(orderNumber, 'wechat', couponId, null, openid)
+          await payOrder(orderNumber, 'wechat', couponId, pointsToUseVal, openid)
+          await bindToMerchantIfOffline()
           await handleReferralCode()
         } catch (e) {
           console.warn('[线下支付] 支付回调处理异常', e)
@@ -653,12 +740,17 @@ const handleWechatPay = async (orderNumber, amount, couponId = null) => {
       },
       fail: (err) => {
         console.error('[线下支付] 微信支付失败:', err)
-        const rawMsg = err?.errMsg || ''
-        // 用户主动取消支付：提示更友好，不当作系统错误
+        const rawMsg = String(err?.errMsg || err?.message || err?.msg || '')
         const isCancel = rawMsg.includes('cancel')
-        const friendlyMsg = isCancel
-          ? '用户已取消支付'
-          : (rawMsg.replace('requestPayment:fail', '').trim() || '支付失败，请稍后重试')
+        const isParamError = /total_fee|缺少参数|参数错误/i.test(rawMsg)
+        let friendlyMsg
+        if (isCancel && !isParamError) {
+          friendlyMsg = '用户已取消支付'
+        } else if (isParamError) {
+          friendlyMsg = '支付参数异常，请重试或联系商户'
+        } else {
+          friendlyMsg = rawMsg.replace(/requestPayment:fail\s*/i, '').trim() || '支付失败，请稍后重试'
+        }
         reject(new Error(friendlyMsg))
       }
     })
@@ -668,7 +760,7 @@ const handleWechatPay = async (orderNumber, amount, couponId = null) => {
 /**
  * 余额支付
  */
-const handleBalancePay = async (orderNumber, amount, couponId = null) => {
+const handleBalancePay = async (orderNumber, amount, couponId = null, pointsToUseVal = null) => {
   const userInfo = uni.getStorageSync('userInfo') || {}
   await ensureApis()
   const balance = Number(userInfo.balance || userInfo.user_balance || 0)
@@ -676,7 +768,8 @@ const handleBalancePay = async (orderNumber, amount, couponId = null) => {
   if (balance < payAmt) {
     throw new Error('余额不足，请选择其他支付方式')
   }
-  await payOrder(orderNumber, 'balance', couponId)
+  await payOrder(orderNumber, 'balance', couponId, pointsToUseVal)
+  await bindToMerchantIfOffline()
   await handleReferralCode()
   paymentSuccess.value = true
   paymentResultMsg.value = ''
@@ -684,7 +777,42 @@ const handleBalancePay = async (orderNumber, amount, couponId = null) => {
 }
 
 /**
- * 处理推荐码绑定
+ * 线下支付成功：把当前用户绑到商家下面（推荐人=商家）
+ */
+const bindToMerchantIfOffline = async () => {
+  try {
+    await ensureApis()
+    const order = orderData.value
+    const merchantId = order?.merchant_id ?? order?.merchantId
+    if (merchantId == null || merchantId === '') {
+      return
+    }
+    const userInfo = uni.getStorageSync('userInfo') || {}
+    if (userInfo.referrer_id || userInfo.referrerId) {
+      console.log('[线下支付] 用户已有推荐人，跳过绑商家')
+      return
+    }
+    const mobile = userInfo.mobile || userInfo.phone
+    const userId = userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid
+    const referrerId = Number(merchantId) || String(merchantId).trim()
+    if (!referrerId) return
+    const payload = { referrer_id: referrerId }
+    if (mobile) payload.mobile = mobile
+    else if (userId != null && userId !== '') payload.user_id = userId
+    else {
+      console.warn('[线下支付] 无法获取用户 mobile/user_id，跳过绑商家')
+      return
+    }
+    console.log('[线下支付] 支付成功，绑定用户到商家:', payload)
+    await bindReferrer(payload)
+    console.log('[线下支付] 绑商家成功')
+  } catch (e) {
+    console.warn('[线下支付] 绑商家失败（不影响支付）:', e)
+  }
+}
+
+/**
+ * 处理推荐码绑定（扫码/链接带来的待绑定推荐人）
  */
 const handleReferralCode = async () => {
   try {
@@ -1014,6 +1142,59 @@ onMounted(() => {
   background: #fff8e1;
   padding: 30rpx;
   margin-bottom: 20rpx;
+}
+
+/* 积分抵扣区域 */
+.points-section {
+  background: #e8f5e9;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+}
+
+.points-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-top: 16rpx;
+}
+
+.points-row .input-label {
+  font-size: 28rpx;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.points-input {
+  flex: 1;
+  height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  background: #fff;
+  border-radius: 8rpx;
+  border: 1rpx solid #c8e6c9;
+}
+
+.use-max-btn {
+  font-size: 26rpx;
+  color: #2e7d32;
+  padding: 12rpx 24rpx;
+  background: #fff;
+  border: 1rpx solid #2e7d32;
+  border-radius: 20rpx;
+  height: auto;
+  line-height: 1.4;
+}
+
+.points-tips {
+  margin-top: 16rpx;
+  padding: 0 4rpx;
+}
+
+.points-tips .tip-item {
+  display: block;
+  font-size: 24rpx;
+  color: #666;
+  line-height: 1.6;
 }
 
 .available-points {

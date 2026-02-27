@@ -74,53 +74,21 @@
 			</view>
 		</view>
 
-		<!-- 商家服务入口（在我的订单下方） -->
-		<!-- 商家服务入口（与 我的订单 样式一致，三按钮） -->
-		<view class="function-section merchant-section">
-			<view class="section-title">商家管理</view>
-			<view class="order-menu merchant-menu">
-				<view class="order-item" @tap="openCertification">
-					<text class="iconfont icon-shangjiarenzheng order-icon"></text>
-					<text class="order-text">商家认证</text>
-				</view>
-				<!-- <view class="order-item" @tap="openBindCard">
-					<text class="iconfont icon-yingyongguanliyuanguanli order-icon"></text>
-					<text class="order-text">银行卡</text> -->
-					<!-- <view class="menu-right">
-						<text class="menu-subtext">{{ merchantBank && merchantBank.number ? (merchantBank.name ? merchantBank.name + ' ' : '') + ('**** ' + String(merchantBank.number).slice(-4)) : '未绑定' }}</text>
-					</view> -->
-				<!-- </view> -->
-				<!-- <view class="order-item" @tap="openWithdraw">
-					<text class="iconfont icon-tixian order-icon"></text>
-					<text class="order-text">提现</text>
-				</view> -->
-				<!-- 新增商家快捷入口：付款码收款 / 创建支付单 -->
-				<view class="order-item" @tap="goToPage('/subPackages/page2/pages/merchant/offline_cashier')">
-					<view class="order-icon qrcode-icon"></view>
-					<text class="order-text">付款码</text>
-				</view>
-				<view class="order-item" @tap="goToPage('/subPackages/page2/pages/merchant/create_payment')">
-					<text class="iconfont icon-hongbao order-icon"></text>
-					<text class="order-text">支付单</text>
-				</view>
-			</view>
-		</view>
-
 		<!-- 功能菜单 -->
 		<view class="menu-section">
-			<view class="menu-item" @tap="scanToPay">
+			<view class="menu-item" @tap="goToPage('/subPackages/page1/pages/favorites/favorites')">
 				<view class="menu-left">
-					<text class="menu-icon iconfont icon-saoyisao"></text>
-					<text class="menu-text">扫码付款</text>
+					<text class="menu-icon-like iconfont icon-shoucang"></text>
+					<text class="menu-text">我的收藏</text>
 				</view>
 				<view class="menu-right">
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
-			<view class="menu-item" @tap="goToPage('/subPackages/page1/pages/favorites/favorites')">
+			<view class="menu-item" @tap="scanToPay">
 				<view class="menu-left">
-					<text class="menu-icon-like iconfont icon-shoucang"></text>
-					<text class="menu-text">我的收藏</text>
+					<text class="iconfont icon-xiangji menu-icon"></text>
+					<text class="menu-text">扫码付款</text>
 				</view>
 				<view class="menu-right">
 					<text class="menu-arrow">›</text>
@@ -165,18 +133,13 @@
 			</view>
 		</view>
 
-		<!-- 平台/商家入口：is_merchant=2 平台，=1 商家，否则显示通用平台入口 -->
-		<view class="merchant-entrance" v-if="isLoggedIn && (isPlatformUser || isShopUser)">
+		<!-- 平台/商家入口：平台用户显示平台模式按钮；商家和普通用户统一显示商家模式按钮 -->
+		<view class="merchant-entrance" v-if="isLoggedIn">
 			<view class="merchant-btn" v-if="isPlatformUser" @tap="switchToMerchantMode">
 				<text class="merchant-text">进入平台模式</text>
 			</view>
-			<view class="merchant-btn shop-mode" v-else-if="isShopUser" @tap="switchToShopMode">
+			<view class="merchant-btn shop-mode" v-else @tap="onEnterShopMode">
 				<text class="merchant-text">进入商家模式</text>
-			</view>
-		</view>
-		<view class="merchant-entrance" v-if="isLoggedIn && !isPlatformUser && !isShopUser">
-			<view class="merchant-btn" @tap="goToPage('/pages/merchant/merchant')">
-				<text class="merchant-text">平台入口</text>
 			</view>
 		</view>
 
@@ -1210,23 +1173,17 @@ const switchToMerchantMode = () => {
 }
 
 /**
- * 切换到商家模式（is_merchant=1）
+ * 进入商家模式：商家身份直接进入商家中心，普通用户跳转商家认证并提示
  */
-const switchToShopMode = () => {
-	// 检查登录状态
-	if (!checkLogin()) {
-		return
+const onEnterShopMode = () => {
+	if (!checkLogin()) return
+	if (isShopUser.value) {
+		// 商家点击直接进入
+		switchShopMode()
+	} else {
+		// 普通用户：先弹出认证类型选择弹窗，再进入对应的认证信息填写页
+		openCertification()
 	}
-	
-	uni.showModal({
-		title: '切换模式',
-		content: '确定要切换到商家模式吗？',
-		success: (res) => {
-			if (res.confirm) {
-				switchShopMode()
-			}
-		}
-	})
 }
 
 /**

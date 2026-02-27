@@ -129,6 +129,10 @@ export const createOfflinePaymentOrder = (data) => {
     product_name: String(data.product_name || '').trim() || '',
     remark: String(data.remark || '').trim() || ''
   }
+  // 选了已有商品时传 product_id，不选时由后端自动生成商品ID/名称
+  if (data.product_id !== undefined && data.product_id !== null && data.product_id !== '') {
+    body.product_id = Number(data.product_id)
+  }
   const bodyStr = JSON.stringify(body)
   console.log('[创建支付单] 请求体 POST /api/offline/dingdan/chuangjian', bodyStr)
   return request.post('/api/offline/dingdan/chuangjian', bodyStr)

@@ -1,5 +1,9 @@
 <template>
   <view class="product-add-page">
+    <!-- 商家仅线下提示 -->
+    <view v-if="isMerchantOfflineOnly" class="merchant-offline-tip">
+      <text class="tip-text">商家商品仅线下售卖，无上架/库存概念，保存后为下架状态且不可更改。</text>
+    </view>
     <!-- 商品基本信息 -->
     <view class="form-section">
       <view class="section-header">
@@ -376,6 +380,7 @@ import config from '@/utils/config.js'
 import { chooseImageWithPermission } from '../../utils/permission.js'
 
 const productId = ref('')
+const isMerchantOfflineOnly = ref(false) // 商家端：仅线下售卖，商品固定为下架状态不可改
 const newTag = ref('')
 const categoryIndex = ref(0)
 const rawProductData = ref(null) // 保存原始商品数据，用于更新时匹配SKU的id
@@ -1314,7 +1319,7 @@ const publishProduct = async () => {
       name: productForm.value.name.trim(),
       description: productForm.value.description || '',
       category: productForm.value.category,
-      status: 1, // 1-上架，0-下架
+      status: isMerchantOfflineOnly.value ? 0 : 1, // 商家仅线下：固定下架(0)；否则上架(1)
       is_member_product: productForm.value.productType === 'vip',
       buy_rule: productForm.value.buyRule || '',
       freight: productForm.value.freight || 0,
@@ -1512,7 +1517,7 @@ const publishProduct = async () => {
       name: String(productData.name || '').trim(),
       description: String(productData.description || ''),
       category: String(productData.category || ''),
-      status: Number(productData.status || 1),
+      status: isMerchantOfflineOnly.value ? 0 : Number(productData.status || 1),
       user_id: Number(userId), // 必需字段：当前登录用户的ID
       is_member_product: Boolean(productData.is_member_product || false),
       buy_rule: String(productData.buy_rule || ''),
@@ -2419,6 +2424,7 @@ const initFormForEdit = async (id) => {
 }
 
 onLoad(async (options) => {
+  isMerchantOfflineOnly.value = options.from === 'shop'
   if (options.id) {
     productId.value = options.id
     // 加载商品数据进行编辑
@@ -2440,6 +2446,19 @@ onMounted(() => {
   min-height: 100vh;
   padding: 40rpx;
   padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+.merchant-offline-tip {
+  background: #fff8e6;
+  border: 1rpx solid #ffd666;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 24rpx;
+}
+.merchant-offline-tip .tip-text {
+  font-size: 24rpx;
+  color: #ad6800;
+  line-height: 1.5;
 }
 
 /* 表单区块 */

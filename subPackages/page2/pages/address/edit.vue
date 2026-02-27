@@ -42,29 +42,13 @@
           <text class="form-label">所在地区</text>
           <view class="region-wrapper">
           <view class="region-input-wrapper">
-            <!-- #ifdef MP-WEIXIN -->
-            <picker 
-              mode="region" 
-              :value="regionArray"
-              @change="onRegionChange"
-              class="region-picker-native"
-            >
-                <view class="region-picker" :class="{ 'input-error': errors.region }">
-                <text class="region-text" :class="{ placeholder: !regionText }">
-                  {{ regionText || '请选择省市区' }}
-                </text>
-                <text class="picker-arrow">›</text>
-              </view>
-            </picker>
-            <!-- #endif -->
-            <!-- #ifdef APP-PLUS -->
-              <view class="region-picker" :class="{ 'input-error': errors.region }" @click="showRegionPicker">
+            <!-- unified custom region picker for all platforms -->
+            <view class="region-picker" :class="{ 'input-error': errors.region }" @click="showRegionPicker">
               <text class="region-text" :class="{ placeholder: !regionText }">
                 {{ regionText || '请选择省市区' }}
               </text>
-              <text class="picker-arrow">></text>
+              <text class="picker-arrow">›</text>
             </view>
-            <!-- #endif -->
               <button class="location-btn" @tap="autoLocation" :disabled="locationLoading">
                 <text class="location-icon iconfont icon-dingwei" :class="{ 'loading': locationLoading }"></text>
                 <text class="location-text">{{ locationLoading ? '定位中...' : '定位' }}</text>
@@ -114,8 +98,7 @@
       </view>
     </form>
 
-    <!-- App端地区选择弹窗 -->
-    <!-- #ifdef APP-PLUS -->
+    <!-- 地区选择弹窗（跨平台统一样式，点击依次选择省/市/区） -->
     <view v-if="showRegionPopup" class="region-popup-mask" @click="closeRegionPopup">
       <view class="region-popup" @click.stop>
         <view class="popup-header">
@@ -123,36 +106,53 @@
           <text class="popup-close" @click="closeRegionPopup">×</text>
         </view>
         <view class="popup-content">
-          <picker-view :value="pickerValue" @change="onPickerChange" class="picker-view">
-            <picker-view-column>
-              <view v-for="(item, index) in provinces" :key="index" class="picker-item">{{ item.name }}</view>
-            </picker-view-column>
-            <picker-view-column>
-              <view v-for="(item, index) in cities" :key="index" class="picker-item">{{ item.name }}</view>
-            </picker-view-column>
-            <picker-view-column>
-              <view v-for="(item, index) in districts" :key="index" class="picker-item">{{ item.name }}</view>
-            </picker-view-column>
-          </picker-view>
-        </view>
-        <view class="popup-footer">
-          <button class="popup-btn cancel-btn" @click="closeRegionPopup">取消</button>
-          <button class="popup-btn confirm-btn" @click="confirmRegion">确定</button>
+          <!-- stage 1: 省份列表 -->
+          <view v-if="popupStage === 1" class="select-list">
+            <view
+              v-for="prov in provincesList"
+              :key="prov.code"
+              class="select-item"
+              @click="selectProvince(prov)"
+            >
+              {{ prov.name }}
+            </view>
+          </view>
+          <!-- stage 2: 城市列表 -->
+          <view v-if="popupStage === 2" class="select-list">
+            <view class="back-button" @click="popupStage = 1">‹ 省份</view>
+            <view
+              v-for="city in citiesList"
+              :key="city.code"
+              class="select-item"
+              @click="selectCity(city)"
+            >
+              {{ city.name }}
+            </view>
+          </view>
+          <!-- stage 3: 区县列表 -->
+          <view v-if="popupStage === 3" class="select-list">
+            <view class="back-button" @click="popupStage = 2">‹ 城市</view>
+            <view
+              v-for="dist in districtsList"
+              :key="dist.code"
+              class="select-item"
+              @click="selectDistrict(dist)"
+            >
+              {{ dist.name }}
+            </view>
         </view>
       </view>
     </view>
-    <!-- #endif -->
+  </view>
   </view>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-// #ifdef APP-PLUS
-// import regionData from '@/data.json' // 已删除，APP端地区选择功能暂时禁用
-const regionData = [] // 临时空数组，避免报错
-// #endif
+// 通用地区数据帮助函数
 import { addAddress, updateAddress } from '@/api/user.js'
+import { getProvinces, getCities, getDistricts } from '@/utils/bank-region-data.js'
 
 const isEditMode = ref(false)
 const addressId = ref(null)
@@ -185,6 +185,14 @@ const locationError = ref('')
 
 // 地区选择相关
 const regionArray = ref(['广东省', '广州市', '天河区'])
+// regionArray kept for compatibility but not used in custom picker
+
+// 弹窗级别及三级数据
+const showRegionPopup = ref(false)
+const popupStage = ref(1)            // 1=省,2=市,3=区
+const provincesList = ref([])
+const citiesList = ref([])
+const districtsList = ref([])
 
 // 计算属性
 const regionText = computed(() => {
@@ -203,129 +211,61 @@ const canSubmit = computed(() => {
          formData.value.detail
 })
 
+// （旧 App 端 picker 相关已删除，使用新级联选择）
+
 /**
- * 地区选择变化（小程序端）
+ * popup 显示前重置并加载省份列表
  */
-const onRegionChange = (e) => {
-  const [province, city, district] = e.detail.value
-  formData.value.province = province
-  formData.value.city = city
-  formData.value.district = district
-  regionArray.value = [province, city, district]
+const resetRegionPopup = () => {
+  popupStage.value = 1
+  provincesList.value = getProvinces()
+  citiesList.value = []
+  districtsList.value = []
+}
+
+/**
+ * 选择省份之后加载城市并进入下一步
+ */
+const selectProvince = (prov) => {
+  formData.value.province = prov.name
+  citiesList.value = getCities(prov.code)
+  popupStage.value = 2
+}
+
+/**
+ * 选择城市之后加载区县并进入下一步
+ */
+const selectCity = (city) => {
+  formData.value.city = city.name
+  districtsList.value = getDistricts(city.code)
+  popupStage.value = 3
+}
+
+/**
+ * 选择区县完成，直接关闭弹窗并保存
+ */
+const selectDistrict = (dist) => {
+  formData.value.district = dist.name
   // 清除地区错误
   errors.value.region = ''
-}
-
-// App端地区选择相关
-const showRegionPopup = ref(false)
-const pickerValue = ref([0, 0, 0])
-const provinces = ref([])
-const cities = ref([])
-const districts = ref([])
-
-/**
- * 初始化地区数据
- */
-const initRegionData = () => {
-  // #ifdef APP-PLUS
-  // regionData 数据文件已删除，APP端地区选择功能暂时禁用
-  // 如需使用，请恢复 data.json 文件或使用其他地区数据源
-  provinces.value = []
-  // provinces.value = regionData.filter(item => item.city === 0 && item.area === 0)
-  // if (provinces.value.length > 0) {
-  //   updateCities(0)
-  // }
-  // #endif
+  closeRegionPopup()
 }
 
 /**
- * 更新城市列表
- */
-const updateCities = (provinceIndex) => {
-  // #ifdef APP-PLUS
-  // regionData 数据文件已删除，功能暂时禁用
-  cities.value = []
-  // const province = provinces.value[provinceIndex]
-  // const provinceCode = province.code.substring(0, 2)
-  // cities.value = regionData.filter(item => item.code.startsWith(provinceCode) && item.city !== 0 && item.area === 0)
-  // if (cities.value.length === 0) {
-  //   cities.value = [{ name: province.name, code: province.code }]
-  // }
-  // updateDistricts(provinceIndex, 0)
-  // #endif
-}
-
-/**
- * 更新区县列表
- */
-const updateDistricts = (provinceIndex, cityIndex) => {
-  // #ifdef APP-PLUS
-  // regionData 数据文件已删除，功能暂时禁用
-  districts.value = []
-  // const city = cities.value[cityIndex]
-  // const cityCode = city.code.substring(0, 4)
-  // districts.value = regionData.filter(item => item.code.startsWith(cityCode) && item.area !== 0)
-  // if (districts.value.length === 0) {
-  //   districts.value = [{ name: '市辖区', code: cityCode + '00' }]
-  // }
-  // #endif
-}
-
-/**
- * picker滚动变化
- */
-const onPickerChange = (e) => {
-  const val = e.detail.value
-  const oldVal = pickerValue.value
-  
-  if (val[0] !== oldVal[0]) {
-    // 省份变化
-    updateCities(val[0])
-    pickerValue.value = [val[0], 0, 0]
-  } else if (val[1] !== oldVal[1]) {
-    // 城市变化
-    updateDistricts(val[0], val[1])
-    pickerValue.value = [val[0], val[1], 0]
-  } else {
-    pickerValue.value = val
-  }
-}
-
-/**
- * 显示地区选择器（App端）
+ * 显示地区选择器（所有平台统一）
  */
 const showRegionPicker = () => {
-  // #ifdef APP-PLUS
-  initRegionData()
+  resetRegionPopup()
   showRegionPopup.value = true
-  // #endif
 }
 
 /**
- * 关闭地区选择器
+ * 关闭弹窗
  */
 const closeRegionPopup = () => {
   showRegionPopup.value = false
 }
 
-/**
- * 确认选择地区
- */
-const confirmRegion = () => {
-  const province = provinces.value[pickerValue.value[0]].name
-  const city = cities.value[pickerValue.value[1]].name
-  const district = districts.value[pickerValue.value[2]].name
-  
-  formData.value.province = province
-  formData.value.city = city
-  formData.value.district = district
-  regionArray.value = [province, city, district]
-  
-  // 清除地区错误
-  errors.value.region = ''
-  
-  closeRegionPopup()
-}
 
 /**
  * 检查定位权限
@@ -1158,12 +1098,62 @@ onLoad((options) => {
 
 .form-textarea.input-error {
   border: 2rpx solid #ff4757;
-  background: #fff5f5;
 }
 
-.region-picker-native {
-  flex: 1;
+/* region popup styles */
+.region-popup-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
 }
+.region-popup {
+  width: 90%;
+  max-width: 600rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx;
+  border-bottom: 1rpx solid #eee;
+}
+.popup-title {
+  font-size: 32rpx;
+  font-weight: bold;
+}
+.popup-close {
+  font-size: 36rpx;
+  line-height: 1;
+}
+.popup-content {
+  max-height: 400rpx;
+  overflow-y: auto;
+}
+.select-list {
+  padding: 20rpx;
+}
+.select-item {
+  padding: 20rpx 0;
+  font-size: 30rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.select-item:last-child {
+  border-bottom: none;
+}
+.back-button {
+  padding: 20rpx 0;
+  font-size: 28rpx;
+  color: #007aff;
+}
+
+
 
 /* 地区选择组样式 */
 .region-group {

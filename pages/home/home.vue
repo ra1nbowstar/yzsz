@@ -1269,7 +1269,7 @@ onShow(() => {
 	// 每次显示页面时更新未读消息数和播报内容
 	loadUnreadCount()
 	loadCharityNotices() // 实时更新播报内容
-	
+
 	// 尝试绑定推荐人（延迟执行，确保用户信息已加载）
 	setTimeout(() => {
 		tryBindReferrerOnHome()

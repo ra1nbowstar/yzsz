@@ -801,8 +801,12 @@ const confirmDeleteAccount = async () => {
 					onUserLogout()
 					
 					// 延迟跳转到登录页
-					setTimeout(() => {
-						uni.reLaunch({ url: '/pages/index/index' })
+					setTimeout(async () => {
+						try {
+							await uni.reLaunch({ url: '/pages/index/index' })
+						} catch (reLaunchError) {
+							console.error('[注销跳转失败]', reLaunchError)
+						}
 					}, 2000)
 				} catch (error) {
 					uni.hideLoading()
@@ -845,15 +849,15 @@ const handleLogout = () => {
 				
 				// 立即跳转到登录页（清除操作已优化，不需要延迟）
 				try {
-					uni.reLaunch({ url: '/pages/index/index' })
+					await uni.reLaunch({ url: '/pages/index/index' })
 				} catch (error) {
 					console.error('跳转失败', error)
 					// 如果reLaunch失败，尝试使用redirectTo
 					try {
-						uni.redirectTo({ url: '/pages/index/index' })
+						await uni.redirectTo({ url: '/pages/index/index' })
 					} catch (e) {
 						// 如果都失败，使用navigateTo
-						uni.navigateTo({ url: '/pages/index/index' })
+						await uni.navigateTo({ url: '/pages/index/index' })
 					}
 				}
 			}

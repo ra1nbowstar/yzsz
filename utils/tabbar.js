@@ -109,9 +109,10 @@ export const shopTabBar = {
  */
 export const switchToUserMode = () => {
   uni.setStorageSync('userMode', 'user')
-  // 重新启动应用以应用新的tabbar配置
+  uni.setStorageSync('skip_auto_shop_redirect', '1') // 用户主动切到用户模式，本次会话内首页不再自动跳回商家
+  // 重新启动应用以应用新的tabbar配置，跳到「我的」页
   uni.reLaunch({
-    url: '/pages/home/home'
+    url: '/pages/user/user'
   })
 }
 

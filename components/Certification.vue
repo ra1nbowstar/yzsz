@@ -45,11 +45,11 @@
             <input class="form-input" v-model="form.merchant_shortname" placeholder="1-64字，支付页展示用" placeholder-class="placeholder" />
           </view>
         </view>
-        <view class="upload-card">
+        <view class="upload-card id-card-upload">
           <text class="upload-title">身份证照片</text>
           <text class="upload-hint">上传身份证人像面、国徽面各一张，支持预览、删除</text>
           <view class="upload-requirement"><text class="upload-requirement-text">照片需<text class="upload-requirement-red">清晰、完整</text>，且在有效期内</text></view>
-          <view class="upload-row">
+          <view class="upload-row id-card-row">
             <view class="upload-col">
               <text class="upload-col-label">人像面</text>
               <view class="upload-list">
@@ -1342,6 +1342,42 @@ const statusMeta = statusMetaRef
   gap: 32rpx;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* 身份证照片：一个图片占一行，展示区域做大 */
+.id-card-upload .id-card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 32rpx;
+  grid-template-columns: unset;
+}
+.id-card-upload .id-card-row .upload-col {
+  width: 100%;
+}
+.id-card-upload .id-card-row .upload-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20rpx;
+}
+.id-card-upload .id-card-row .upload-box {
+  width: 100%;
+  height: 360rpx;
+  min-height: 360rpx;
+}
+.id-card-upload .id-card-row .upload-box.add:not(.replace) {
+  width: 100%;
+  height: 360rpx;
+  min-height: 360rpx;
+}
+.id-card-upload .id-card-row .upload-box.add.replace {
+  width: 100%;
+  height: 72rpx;
+  min-height: 72rpx;
+}
+.id-card-upload .id-card-row .upload-col-label {
+  font-size: 28rpx;
+  margin-bottom: 16rpx;
 }
 
 /* 证照三列：用 grid 等分，左右留白一致 */

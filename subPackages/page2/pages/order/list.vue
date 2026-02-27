@@ -285,11 +285,11 @@ const loadOrderList = async (append = false) => {
 			orderData = res
 		}
 		
+		const pagination = res.data?.pagination || res.pagination
 		// 分页信息：有则用，没有则根据本页条数判断；追加时若本页为空则不再加载
 		if (append && orderData.length === 0) {
 			hasMore.value = false
 		} else {
-			const pagination = res.data?.pagination || res.pagination
 			if (pagination && (pagination.total != null || pagination.has_next !== undefined)) {
 				if (pagination.has_next === false) hasMore.value = false
 				else if (pagination.total != null) hasMore.value = (allOrders.value.length + orderData.length) < pagination.total

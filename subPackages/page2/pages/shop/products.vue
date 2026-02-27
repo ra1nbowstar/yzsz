@@ -1,17 +1,5 @@
 <template>
 	<view class="products-page">
-		<!-- 搜索和筛选 -->
-		<view class="search-filter-bar">
-			<view class="search-box">
-				<input v-model="searchKeyword" class="search-input" placeholder="搜索商品名称" />
-				<text class="search-icon iconfont icon-sousuo"></text>
-			</view>
-			<view class="filter-btn" @tap="showFilterMenu">
-				<text class="filter-icon">筛选</text>
-				<text class="filter-arrow">▼</text>
-			</view>
-		</view>
-
 		<!-- 添加商品按钮 -->
 		<view class="add-product-btn" @tap="addProduct">
 			<text class="add-icon">+</text>
@@ -21,14 +9,14 @@
 		<!-- 商品列表 -->
 		<view class="products-list">
 			<view 
-				v-for="product in filteredProducts" 
+				v-for="product in products" 
 				:key="product.id"
 				class="product-card"
 			>
 				<view class="product-image-wrapper">
 					<image :src="getProductImage(product)" class="product-image" mode="aspectFit" @error="onImageError" />
-					<view class="product-status" :class="getStatusClass(product.status)">
-						<text class="status-text">{{ getStatusText(product.status) }}</text>
+					<view class="product-status status-off">
+						<text class="status-text">仅线下</text>
 					</view>
 				</view>
 				
@@ -46,12 +34,6 @@
 							<text class="detail-value price">¥{{ product.price }}</text>
 						</view>
 						<view class="detail-row">
-							<text class="detail-label">库存:</text>
-							<text class="detail-value" :class="getStockClass(product.stock)">
-								{{ product.stock }}
-							</text>
-						</view>
-						<view class="detail-row">
 							<text class="detail-label">销量:</text>
 							<text class="detail-value">{{ product.sales }}</text>
 						</view>
@@ -61,15 +43,12 @@
 						<button class="action-btn" @tap="editProduct(product)">
 							<text class="btn-text">编辑</text>
 						</button>
-						<button class="action-btn" @tap="toggleStatus(product)">
-							<text class="btn-text">状态</text>
-						</button>
 					</view>
 				</view>
 			</view>
 			
 			<!-- 空状态 -->
-			<view v-if="filteredProducts.length === 0" class="empty-state">
+			<view v-if="products.length === 0" class="empty-state">
 				<text class="empty-icon iconfont icon-gouwuchekong"></text>
 				<text class="empty-text">暂无商品</text>
 				<button class="empty-btn" @tap="addProduct">添加第一个商品</button>
@@ -79,18 +58,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getShopProductList, getProductList, updateProduct } from '@/api/product.js'
+import { getShopProductList, getProductList } from '@/api/product.js'
 import config from '@/utils/config.js'
 
 // 优先使用商家模式接口 GET /api/users/{user_id}/products；若未导出则回退到 getProductList(only_my_products)
 const fetchShopProducts = typeof getShopProductList === 'function'
   ? (params) => getShopProductList(params)
   : (params) => getProductList({ ...params, only_my_products: true })
-
-const searchKeyword = ref('')
-const currentFilter = ref('all')
 
 const stats = ref({
 	total: 0,
@@ -267,21 +243,6 @@ const updateStats = () => {
 	stats.value.soldOut = products.value.filter(p => p.status === 'sold_out' || p.stock === 0).length
 }
 
-const filteredProducts = computed(() => {
-	let result = products.value
-	
-	if (searchKeyword.value) {
-		const keyword = searchKeyword.value.toLowerCase()
-		result = result.filter(p => p.name.toLowerCase().includes(keyword))
-	}
-	
-	if (currentFilter.value !== 'all') {
-		result = result.filter(p => p.status === currentFilter.value)
-	}
-	
-	return result
-})
-
 // 页面加载时加载商品
 onMounted(async () => {
 	await loadProducts()
@@ -311,66 +272,11 @@ const getStockClass = (stock) => {
 }
 
 const addProduct = () => {
-	uni.navigateTo({ url: '/subPackages/page1/pages/merchant/product-add' })
+	uni.navigateTo({ url: '/subPackages/page1/pages/merchant/product-add?from=shop' })
 }
 
 const editProduct = (product) => {
-	uni.navigateTo({ url: `/subPackages/page1/pages/merchant/product-add?id=${product.id}` })
-}
-
-const toggleStatus = async (product) => {
-	uni.showActionSheet({
-		itemList: ['上架', '下架', '售空'],
-		success: async (res) => {
-			let newStatus
-			let statusText
-			
-			if (res.tapIndex === 0) {
-				newStatus = 1 // 上架
-				statusText = '已上架'
-			} else if (res.tapIndex === 1) {
-				newStatus = 0 // 下架
-				statusText = '已下架'
-			} else if (res.tapIndex === 2) {
-				newStatus = 2 // 售空 (假设后端支持)
-				statusText = '已售空'
-			}
-			
-			try {
-				uni.showLoading({ title: '处理中...' })
-				
-				// 调用API更新商品状态
-				await updateProduct(product.id, {
-					status: newStatus
-				})
-				
-				// 更新本地状态
-				if (newStatus === 1) {
-					product.status = 'on_sale'
-				} else if (newStatus === 0) {
-					product.status = 'off_sale'
-				} else if (newStatus === 2) {
-					product.status = 'sold_out'
-				}
-			
-			// 更新统计
-			updateStats()
-			
-				uni.hideLoading()
-			uni.showToast({ 
-				title: statusText, 
-				icon: 'success' 
-			})
-			} catch (error) {
-				uni.hideLoading()
-				console.error('更新商品状态失败', error)
-				uni.showToast({ 
-					title: error.message || error.detail || '操作失败', 
-					icon: 'none' 
-				})
-			}
-		}
-	})
+	uni.navigateTo({ url: `/subPackages/page1/pages/merchant/product-add?id=${product.id}&from=shop` })
 }
 
 /**
@@ -415,15 +321,6 @@ const onImageError = (e) => {
 	// 可以在这里设置默认图片
 }
 
-const showFilterMenu = () => {
-	uni.showActionSheet({
-		itemList: ['全部商品', '在售商品', '下架商品', '售空商品'],
-		success: (res) => {
-			const filters = ['all', 'on_sale', 'off_sale', 'sold_out']
-			currentFilter.value = filters[res.tapIndex]
-		}
-	})
-}
 </script>
 
 <style scoped>
@@ -434,68 +331,6 @@ const showFilterMenu = () => {
 	min-height: 100vh;
 	background: #f5f5f5;
 	padding: 24rpx 0 40rpx;
-}
-
-.search-filter-bar {
-	background: white;
-	padding: 20rpx 30rpx;
-	display: flex;
-	gap: 16rpx;
-	border-bottom: 1rpx solid #f0f0f0;
-	width: 100%;
-	box-sizing: border-box;
-}
-
-.search-box {
-	flex: 1;
-	position: relative;
-}
-
-.search-input {
-	width: 100%;
-	padding: 20rpx 60rpx 20rpx 20rpx;
-	background: #f5f5f5;
-	border-radius: 25rpx;
-	font-size: 26rpx;
-	height: 68rpx;
-	box-sizing: border-box;
-	line-height: 1.5;
-}
-
-.search-icon {
-	position: absolute;
-	right: 20rpx;
-	top: 50%;
-	transform: translateY(-50%);
-	font-size: 28rpx;
-	color: #999;
-}
-
-.filter-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 8rpx;
-	padding: 0 24rpx;
-	background: #f5f5f5;
-	border-radius: 25rpx;
-	flex-shrink: 0;
-	min-width: 140rpx;
-	width: 140rpx;
-	height: 68rpx;
-	box-sizing: border-box;
-}
-
-.filter-icon {
-	font-size: 26rpx;
-	color: #666;
-	line-height: 1;
-}
-
-.filter-arrow {
-	font-size: 20rpx;
-	color: #999;
-	line-height: 1;
 }
 
 .add-product-btn {

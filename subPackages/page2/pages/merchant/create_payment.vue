@@ -7,37 +7,35 @@
         <text>创建支付单</text>
       </view>
       <view class="form-body">
-        <!-- 1. 先选商铺 -->
+        <!-- 1. 商户固定为自己，只读展示 -->
         <view class="form-item">
-          <text class="form-label">门店</text>
-          <view class="form-input picker-wrap" @tap="openStorePicker">
-            <text :class="{ placeholder: !form.store_name }">{{ form.store_name || '请选择门店' }}</text>
-            <text class="iconfont icon-arrow-right picker-arrow"></text>
+          <text class="form-label">商户</text>
+          <view class="form-input form-input-readonly">
+            <text>{{ form.store_name || '我的店铺' }}</text>
           </view>
         </view>
-        <!-- 2. 再选商品（根据商户筛选） -->
+        <!-- 2. 商品：不选则系统默认「店铺名+1号商品」，可选已有商品（含下架） -->
         <view class="form-item">
           <text class="form-label">商品</text>
-          <view
-            class="form-input picker-wrap"
-            :class="{ disabled: !selectedStore }"
-            @tap="selectedStore ? openProductPicker() : showSelectStoreFirst()"
-          >
-            <text :class="{ placeholder: !form.product_name }">{{ form.product_name || '请先选门店再选商品' }}</text>
-            <text class="iconfont icon-arrow-right picker-arrow"></text>
+          <view class="form-row-with-btn">
+            <view class="form-input form-input-readonly flex-1">
+              <text>{{ productDisplayName }}</text>
+            </view>
+            <button v-if="selectedProduct" class="btn-link" @tap="clearProduct">清除</button>
+            <button class="btn-link primary" @tap="openProductPicker">选择已有商品</button>
           </view>
+          <text class="form-hint">不选则使用默认：{{ defaultProductName }}</text>
         </view>
-        <!-- 3. 金额（点击选择当前商品的款式/规格价格，不可手填） -->
+        <!-- 3. 金额可调整 -->
         <view class="form-item">
           <text class="form-label">金额（元）</text>
-          <view
-            class="form-input picker-wrap"
-            :class="{ disabled: !selectedProduct }"
-            @tap="selectedProduct ? openAmountPicker() : showSelectProductFirst()"
-          >
-            <text :class="{ placeholder: !form.amount }">{{ form.amount ? '¥' + form.amount : '请先选商品再选款式价格' }}</text>
-            <text class="iconfont icon-arrow-right picker-arrow"></text>
-          </view>
+          <input
+            class="form-input"
+            type="digit"
+            v-model="form.amount"
+            placeholder="请输入金额"
+            placeholder-class="placeholder"
+          />
         </view>
         <view class="form-item">
           <text class="form-label">备注（选填）</text>
@@ -59,58 +57,21 @@
       </view>
     </view>
 
-    <!-- 门店选择弹层 -->
-    <view v-if="storePickerVisible" class="mask" @tap="closeStorePicker"></view>
-    <view v-if="storePickerVisible" class="picker-popup store-popup">
-      <view class="picker-header">
-        <text class="picker-title">选择门店</text>
-        <text class="picker-close iconfont" @tap="closeStorePicker">&#xe60a;</text>
-      </view>
-      <view class="picker-search">
-        <input
-          v-model="storeSearchKeyword"
-          placeholder="根据门店ID搜索"
-          placeholder-class="placeholder"
-          class="search-input"
-          @input="onStoreSearchInput"
-        />
-      </view>
-      <scroll-view scroll-y class="picker-list" @scrolltolower="loadMoreStores">
-        <view v-if="storeListLoading" class="list-loading">加载中...</view>
-        <view
-          v-else-if="filteredStoreList.length === 0"
-          class="list-empty"
-        >暂无门店</view>
-        <view
-          v-for="s in filteredStoreList"
-          :key="s.store_id || s.id"
-          class="picker-item"
-          @tap="selectStore(s)"
-        >
-          <text class="item-main">ID {{ s.store_id || s.id }} · {{ s.store_name || '未命名' }}</text>
-          <text v-if="s.user_id" class="item-sub">商户ID {{ s.user_id }}</text>
-        </view>
-      </scroll-view>
-    </view>
-
-    <!-- 商品选择弹层 -->
+    <!-- 选择已有商品弹层（含下架商品） -->
     <view v-if="productPickerVisible" class="mask" @tap="closeProductPicker"></view>
     <view v-if="productPickerVisible" class="picker-popup product-popup">
       <view class="picker-header">
-        <text class="picker-title">选择商品</text>
+        <text class="picker-title">选择商品（含下架）</text>
         <text class="picker-close iconfont" @tap="closeProductPicker">&#xe60a;</text>
       </view>
-      <scroll-view scroll-y class="picker-list" @scrolltolower="loadMoreProducts">
+      <scroll-view scroll-y class="picker-list" @scrolltolower="loadMoreMyProducts">
         <view v-if="productListLoading" class="list-loading">加载中...</view>
+        <view v-else-if="myProductList.length === 0" class="list-empty">暂无商品</view>
         <view
-          v-else-if="productList.length === 0"
-          class="list-empty"
-        >该门店暂无商品</view>
-        <view
-          v-for="p in productList"
+          v-for="p in myProductList"
           :key="p.id"
           class="picker-item product-item"
-          @tap="selectProduct(p)"
+          @tap="selectMyProduct(p)"
         >
           <text class="item-main">{{ p.name || '未命名' }}</text>
           <text class="item-sub">¥{{ formatProductPrice(p) }}</text>
@@ -118,29 +79,8 @@
       </scroll-view>
     </view>
 
-    <!-- 金额（款式/规格价格）选择弹层 -->
-    <view v-if="amountPickerVisible" class="mask" @tap="closeAmountPicker"></view>
-    <view v-if="amountPickerVisible" class="picker-popup amount-popup">
-      <view class="picker-header">
-        <text class="picker-title">选择款式价格</text>
-        <text class="picker-close iconfont" @tap="closeAmountPicker">&#xe60a;</text>
-      </view>
-      <scroll-view scroll-y class="picker-list">
-        <view v-if="priceOptions.length === 0" class="list-empty">暂无价格选项</view>
-        <view
-          v-for="(opt, idx) in priceOptions"
-          :key="idx"
-          class="picker-item product-item"
-          @tap="selectAmount(opt)"
-        >
-          <text class="item-main">{{ opt.label }}</text>
-          <text class="item-sub">¥{{ opt.priceText }}</text>
-        </view>
-      </scroll-view>
-    </view>
-
-    <!-- 收款码区域 -->
-    <view v-if="qrcodeContent" class="section-card qrcode-card">
+    <!-- 收款码区域：优先小程序码，没有时用普通二维码（pay:// 或 code_token） -->
+    <view v-if="paymentInfo && paymentInfo.order_no" class="section-card qrcode-card">
       <view class="section-title">
         <text class="iconfont icon-hongbao section-icon"></text>
         <text>收款码</text>
@@ -155,7 +95,7 @@
             :src="'data:image/png;base64,' + qrcodeB64Ref"
             @error="onQrcodeImageError"
           />
-          <tki-qrcode v-else :key="qrcodeContent" :text="qrcodeContent" :size="220" />
+          <tki-qrcode v-else-if="qrcodeContent" :key="qrcodeContent" :text="qrcodeContent" :size="220" />
         </view>
       </view>
       <view class="payment-info-list">
@@ -193,15 +133,21 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import TkiQrcode from '@/components/tki-qrcode/tki-qrcode.vue'
 import { createOfflinePaymentOrder, refreshCollectionCode } from '../../api/payment.js'
-import { getStoreList } from '@/api/store.js'
+import { getStoreInfo } from '@/api/store.js'
 import { getProductList } from '@/api/product.js'
 
 const form = ref({ amount: '', product_name: '', store_name: '', note: '' })
-const selectedStore = ref(null) // { store_id, store_name, user_id }
-const selectedProduct = ref(null) // 当前选中的商品（含 skus），用于金额选款式
+const selectedStore = ref(null) // 固定为当前用户店铺 { store_id, store_name, user_id }
+const selectedProduct = ref(null) // 已选已有商品 { id, name, price }，null 表示使用默认
+const productPickerVisible = ref(false)
+const myProductList = ref([])
+const productListLoading = ref(false)
+const myProductPage = ref(1)
+const myProductPageSize = 20
+const hasMoreMyProducts = ref(true)
 const qrcodeContent = ref('')
 const qrcodeB64Ref = ref('') // 后端返回的 base64 二维码图，有则优先展示
 const expiresAt = ref(0)
@@ -210,63 +156,10 @@ const refreshingCode = ref(false)
 const paymentInfo = ref({})
 let timer = null
 
-// 门店选择
-const storePickerVisible = ref(false)
-const storeListAll = ref([])
-const storeSearchKeyword = ref('')
-const storeListLoading = ref(false)
-const storePage = ref(1)
-const storePageSize = 20
-const hasMoreStores = ref(true)
-const filteredStoreList = computed(() => {
-  const kw = (storeSearchKeyword.value || '').trim()
-  if (!kw) return storeListAll.value
-  const id = parseInt(kw, 10)
-  if (Number.isNaN(id)) return storeListAll.value
-  return storeListAll.value.filter(
-    (s) => (s.store_id != null && s.store_id === id) || (s.id != null && s.id === id) || (s.user_id != null && s.user_id === id)
-  )
-})
-
-// 商品选择
-const productPickerVisible = ref(false)
-const productList = ref([])
-const productListLoading = ref(false)
-const productPage = ref(1)
-const productPageSize = 20
-const hasMoreProducts = ref(true)
-
-// 金额选择（当前商品的各款式/规格价格，不可手填）
-const amountPickerVisible = ref(false)
-const priceOptions = computed(() => {
-  const p = selectedProduct.value
-  if (!p) return []
-  const options = []
-  if (p.skus && Array.isArray(p.skus) && p.skus.length > 0) {
-    p.skus.forEach((sku, i) => {
-      const price = parseFloat(sku.price)
-      if (Number.isNaN(price)) return
-      const spec = sku.specifications && typeof sku.specifications === 'object'
-        ? Object.entries(sku.specifications).map(([k, v]) => `${k}: ${v}`).join(' ')
-        : ''
-      const label = spec || `规格${i + 1}`
-      options.push({
-        label,
-        price,
-        priceText: (price || 0).toFixed(2)
-      })
-    })
-  } else {
-    const price = parseFloat(p.price)
-    if (!Number.isNaN(price) && price >= 0) {
-      options.push({
-        label: '默认',
-        price,
-        priceText: (price || 0).toFixed(2)
-      })
-    }
-  }
-  return options
+const defaultProductName = computed(() => (form.value.store_name || '我的店铺') + '1号商品')
+const productDisplayName = computed(() => {
+  if (selectedProduct.value) return selectedProduct.value.name
+  return form.value.product_name || defaultProductName.value
 })
 
 const expiresText = computed(() => {
@@ -303,191 +196,108 @@ function getMerchantId() {
   return userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid ?? 0
 }
 
+/** 加载当前用户店铺信息，商户固定为自己，默认商品名为店铺名+1号商品 */
+async function loadMyStore() {
+  const userId = getMerchantId()
+  if (!userId) return
+  try {
+    const res = await getStoreInfo(userId)
+    const data = res?.data ?? res
+    const storeName = (data?.store_name ?? data?.storeName ?? data?.name ?? '我的店铺') || '我的店铺'
+    const storeId = data?.store_id ?? data?.id ?? data?.storeId ?? null
+    selectedStore.value = { store_id: storeId, store_name: storeName, user_id: userId }
+    form.value.store_name = storeName
+    if (!selectedProduct.value && !form.value.product_name) form.value.product_name = storeName + '1号商品'
+  } catch (e) {
+    console.warn('[创建支付单] 加载店铺信息失败，使用默认', e)
+    selectedStore.value = { store_id: null, store_name: '我的店铺', user_id: userId }
+    form.value.store_name = '我的店铺'
+    if (!selectedProduct.value && !form.value.product_name) form.value.product_name = '我的店铺1号商品'
+  }
+}
+
 function formatProductPrice(p) {
-  if (p.skus && p.skus.length > 0 && (p.skus[0].price != null && p.skus[0].price !== '')) {
+  if (p.skus && Array.isArray(p.skus) && p.skus.length > 0 && p.skus[0].price != null) {
     return (parseFloat(p.skus[0].price) || 0).toFixed(2)
   }
   return (parseFloat(p.price) || 0).toFixed(2)
 }
 
-function showSelectStoreFirst() {
-  if (!selectedStore.value) {
-    uni.showToast({ title: '请先选择门店', icon: 'none' })
-  }
-}
-
-async function loadStores(append = false) {
-  if (storeListLoading.value) return
-  storeListLoading.value = true
-  try {
-    if (!append) {
-      storePage.value = 1
-      hasMoreStores.value = true
-    }
-    const page = storePage.value
-    const res = await getStoreList(page, storePageSize)
-    let list = []
-    if (res.items && Array.isArray(res.items)) list = res.items
-    else if (res.data && Array.isArray(res.data)) list = res.data
-    else if (res.data?.items && Array.isArray(res.data.items)) list = res.data.items
-    else if (res.data?.list && Array.isArray(res.data.list)) list = res.data.list
-    else if (Array.isArray(res.list)) list = res.list
-    list = list.map((s) => ({
-      ...s,
-      store_id: s.store_id ?? s.id,
-      user_id: s.user_id != null ? s.user_id : (s.store_id ?? s.id)
-    }))
-    if (append) {
-      storeListAll.value = [...storeListAll.value, ...list]
-    } else {
-      storeListAll.value = list
-    }
-    hasMoreStores.value = list.length >= storePageSize
-    if (list.length >= storePageSize) storePage.value = page + 1
-  } catch (e) {
-    console.error('[创建支付单] 加载门店列表失败', e)
-    uni.showToast({ title: e?.message || '加载门店失败', icon: 'none' })
-  } finally {
-    storeListLoading.value = false
-  }
-}
-
-function loadMoreStores() {
-  if (!hasMoreStores.value || storeListLoading.value || storeSearchKeyword.value.trim()) return
-  loadStores(true)
-}
-
-function onStoreSearchInput() {
-  // 仅前端过滤，filteredStoreList 已根据 storeSearchKeyword 计算
-  // 若需要按 ID 搜后端，可在此调接口，这里用前端过滤
-}
-
-function openStorePicker() {
-  storePickerVisible.value = true
-  storeSearchKeyword.value = ''
-  if (storeListAll.value.length === 0) loadStores()
-}
-
-function closeStorePicker() {
-  storePickerVisible.value = false
-}
-
-function selectStore(s) {
-  selectedStore.value = {
-    store_id: s.store_id ?? s.id,
-    store_name: s.store_name || '未命名',
-    user_id: s.user_id
-  }
-  form.value.store_name = selectedStore.value.store_name
-  form.value.product_name = ''
-  form.value.amount = ''
-  selectedProduct.value = null
-  closeStorePicker()
-}
-
 function openProductPicker() {
-  if (!selectedStore.value) return
   productPickerVisible.value = true
-  productList.value = []
-  productPage.value = 1
-  hasMoreProducts.value = true
-  loadProducts()
+  myProductList.value = []
+  myProductPage.value = 1
+  hasMoreMyProducts.value = true
+  loadMyProducts()
 }
 
 function closeProductPicker() {
   productPickerVisible.value = false
 }
 
-async function loadProducts(append = false) {
-  if (productListLoading.value || !selectedStore.value) return
-  const uid = selectedStore.value.user_id
-  if (uid == null || uid === '') {
-    uni.showToast({ title: '该门店暂无商户ID，无法加载商品', icon: 'none' })
+async function loadMyProducts(append = false) {
+  if (productListLoading.value) return
+  const uid = selectedStore.value?.user_id ?? getMerchantId()
+  if (!uid) {
+    uni.showToast({ title: '请先登录', icon: 'none' })
     return
   }
   productListLoading.value = true
   try {
     if (!append) {
-      productPage.value = 1
-      hasMoreProducts.value = true
+      myProductPage.value = 1
+      hasMoreMyProducts.value = true
     }
-    const page = productPage.value
-    const res = await getProductList({
-      user_id: uid,
-      page,
-      pageSize: productPageSize
-    })
-    let list = []
-    const raw = res.data?.list ?? res.data ?? res.list ?? res.items ?? (Array.isArray(res) ? res : [])
-    list = Array.isArray(raw) ? raw : []
+    const res = await getProductList({ user_id: uid, page: myProductPage.value, pageSize: myProductPageSize, size: myProductPageSize })
+    const raw = res?.data?.list ?? res?.data ?? res?.list ?? res?.items ?? (Array.isArray(res) ? res : [])
+    const list = Array.isArray(raw) ? raw : []
     if (append) {
-      productList.value = [...productList.value, ...list]
+      myProductList.value = [...myProductList.value, ...list]
     } else {
-      productList.value = list
+      myProductList.value = list
     }
-    hasMoreProducts.value = list.length >= productPageSize
-    if (list.length >= productPageSize) productPage.value = page + 1
+    hasMoreMyProducts.value = list.length >= myProductPageSize
+    if (list.length >= myProductPageSize) myProductPage.value++
   } catch (e) {
-    console.error('[创建支付单] 加载商品列表失败', e)
-    uni.showToast({ title: e?.message || '加载商品失败', icon: 'none' })
+    console.warn('[创建支付单] 加载商品列表失败', e)
+    if (!append) myProductList.value = []
   } finally {
     productListLoading.value = false
   }
 }
 
-function loadMoreProducts() {
-  if (!hasMoreProducts.value || productListLoading.value) return
-  loadProducts(true)
+function loadMoreMyProducts() {
+  if (!hasMoreMyProducts.value || productListLoading.value) return
+  loadMyProducts(true)
 }
 
-function selectProduct(p) {
-  selectedProduct.value = p
-  form.value.product_name = p.name || ''
-  form.value.amount = ''
+function selectMyProduct(p) {
+  const price = p.skus && p.skus[0] && p.skus[0].price != null
+    ? parseFloat(p.skus[0].price)
+    : parseFloat(p.price)
+  selectedProduct.value = { id: p.id, name: p.name || '未命名', price: isNaN(price) ? '' : price }
+  form.value.product_name = selectedProduct.value.name
+  if (selectedProduct.value.price !== '' && selectedProduct.value.price > 0) {
+    form.value.amount = String(selectedProduct.value.price)
+  }
   closeProductPicker()
-  // 只有一个价格选项时自动选中
-  nextTick(() => {
-    const opts = priceOptions.value
-    if (opts.length === 1 && opts[0].price >= 0) {
-      form.value.amount = opts[0].priceText
-    }
-  })
 }
 
-function showSelectProductFirst() {
-  if (!selectedProduct.value) {
-    uni.showToast({ title: '请先选择商品', icon: 'none' })
-  }
-}
-
-function openAmountPicker() {
-  if (!selectedProduct.value) return
-  if (priceOptions.value.length === 0) {
-    uni.showToast({ title: '该商品暂无价格选项', icon: 'none' })
-    return
-  }
-  amountPickerVisible.value = true
-}
-
-function closeAmountPicker() {
-  amountPickerVisible.value = false
-}
-
-function selectAmount(opt) {
-  form.value.amount = opt.priceText
-  closeAmountPicker()
+function clearProduct() {
+  selectedProduct.value = null
+  form.value.product_name = defaultProductName.value
 }
 
 async function onCreate() {
   if (creating.value) return
-  const product_name = (form.value.product_name || '').trim()
+  const product_name = (form.value.product_name || '').trim() || defaultProductName.value
   if (!product_name) {
-    uni.showToast({ title: '请输入商品名称', icon: 'none' })
+    uni.showToast({ title: '请选择或使用默认商品', icon: 'none' })
     return
   }
   const amount = Number(form.value.amount)
   if (!amount || amount <= 0) {
-    uni.showToast({ title: '请选择款式价格', icon: 'none' })
+    uni.showToast({ title: '请输入金额', icon: 'none' })
     return
   }
   creating.value = true
@@ -499,7 +309,8 @@ async function onCreate() {
       store_name: (form.value.store_name || '').trim() || '门店',
       amount,
       product_name,
-      remark: (form.value.note || '').trim()
+      remark: (form.value.note || '').trim(),
+      product_id: selectedProduct.value?.id ?? undefined
     })
     console.log('[创建支付单] 后端返回', res)
     // 兼容多种响应：{ code:0, data:{ order_no, qrcode_b64 } } 或 { order_no, code_token, ... } 或 string
@@ -516,12 +327,12 @@ async function onCreate() {
       expires_in = data.expires_in ?? 15 * 60
       let rawB64 = data.qrcode_b64 || data.qrcodeB64 || ''
       if (typeof rawB64 === 'string') {
-        rawB64 = rawB64.trim()
-        // 若后端返回的是 data URL，去掉前缀只留 base64 内容
+        rawB64 = rawB64.trim().replace(/\s+/g, '') // 去掉换行、空格
         if (rawB64.indexOf('base64,') !== -1) {
           rawB64 = rawB64.split('base64,')[1] || ''
         }
-        if (rawB64.length > 100 && /^[A-Za-z0-9+/=]+$/.test(rawB64)) {
+        // 放宽：长度足够且为 base64 字符（含 url-safe 的 - _），即用于展示
+        if (rawB64.length > 50 && /^[A-Za-z0-9+/=_-]+$/.test(rawB64)) {
           qrcodeB64 = rawB64
         }
       }
@@ -540,12 +351,15 @@ async function onCreate() {
       store_name: String((form.value.store_name || '').trim() || '门店')
     }
     expiresAt.value = Date.now() + expires_in * 1000
-    // 收款码优先使用「带订单号」的 pay:// 链接，用户扫码即可进入支付页；后端 qrcode_b64 仅在没有订单号时作为备用
     const payUrl = `pay://${order_no}`
     qrcodeContent.value = code_token || payUrl
-    qrcodeB64Ref.value = order_no ? '' : qrcodeB64  // 有订单号则用前端根据订单号生成的二维码，保证是带订单号的码
+    qrcodeB64Ref.value = qrcodeB64
     console.log('[创建支付单] paymentInfo 已设置', paymentInfo.value)
-    console.log('[创建支付单] 收款码展示: 带订单号 pay://', order_no)
+    if (!qrcodeB64) {
+      console.warn('[创建支付单] 后端未返回 qrcode_b64（小程序码），请确认接口返回该字段')
+    } else {
+      console.log('[创建支付单] 收款码展示: 后端返回（小程序码）')
+    }
     uni.showToast({ title: '收款码已生成', icon: 'success' })
     startTimer()
   } catch (err) {
@@ -596,9 +410,14 @@ async function regenerate() {
   await onCreate()
 }
 
-/** 后端 base64 图片加载失败时改用本地生成二维码 */
+/** 后端小程序码图片加载失败时改用普通二维码展示 */
 function onQrcodeImageError() {
-  console.warn('[创建支付单] 后端二维码图加载失败，改用 pay:// 生成')
+  const pre = (qrcodeB64Ref.value || '').substring(0, 50)
+  if (pre.startsWith('eyJ')) {
+    console.warn('[创建支付单] qrcode_b64 疑似 JSON 的 base64，非图片，已改用普通二维码')
+  } else {
+    console.warn('[创建支付单] 小程序码图片加载失败，已改用普通二维码')
+  }
   qrcodeB64Ref.value = ''
 }
 
@@ -611,6 +430,10 @@ function copyQr() {
     }
   })
 }
+
+onMounted(() => {
+  loadMyStore()
+})
 
 onUnmounted(() => {
   stopTimer()
@@ -681,6 +504,39 @@ onUnmounted(() => {
   border-radius: 12rpx;
   font-size: 30rpx;
   color: #333;
+}
+
+.form-input-readonly {
+  display: flex;
+  align-items: center;
+  color: #666;
+}
+
+.form-row-with-btn {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex-wrap: wrap;
+}
+.form-row-with-btn .flex-1 {
+  flex: 1;
+  min-width: 0;
+}
+.btn-link {
+  font-size: 26rpx;
+  color: #666;
+  padding: 0 16rpx;
+  background: transparent;
+  border: none;
+  height: auto;
+  line-height: 1.5;
+}
+.btn-link.primary {
+  color: #4caf50;
+}
+.form-hint {
+  font-size: 24rpx;
+  color: #999;
 }
 
 .picker-wrap {
@@ -790,14 +646,18 @@ onUnmounted(() => {
 }
 
 .btn-primary {
-  margin-top: 16rpx;
-  height: 88rpx;
-  line-height: 88rpx;
+  margin-top: 20rpx;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 104rpx;
+  line-height: 104rpx;
+  padding: 0;
   background: linear-gradient(135deg, #ff9000, #ff5000);
   color: #fff;
-  font-size: 32rpx;
-  font-weight: 500;
-  border-radius: 16rpx;
+  font-size: 36rpx;
+  font-weight: 600;
+  border-radius: 20rpx;
   border: none;
 }
 
@@ -831,6 +691,29 @@ onUnmounted(() => {
   width: 220rpx;
   height: 220rpx;
   display: block;
+}
+
+.qrcode-placeholder {
+  min-width: 280rpx;
+  min-height: 220rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32rpx;
+  background: #f8f8f8;
+  border-radius: 12rpx;
+  text-align: center;
+}
+.qrcode-placeholder .placeholder-text {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 12rpx;
+}
+.qrcode-placeholder .placeholder-hint {
+  font-size: 22rpx;
+  color: #999;
+  line-height: 1.4;
 }
 
 .payment-info-list {

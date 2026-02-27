@@ -118,14 +118,15 @@ export const getOfflineOrderDetail = (order_no, user_id) => {
 /**
  * 线下收银统一下单（支持优惠券）
  * POST /api/offline/zhifu/tongyi?order_no=xxx&coupon_id=yyy
- * 请求体建议带 openid、user_id，供后端校验「用户已绑定微信」并生成支付参数
+ * 请求体带 openid、user_id、total_fee(分)，后端需把 total_fee 传给微信统一下单
  * @param {String} order_no 订单号（必填）
  * @param {Number|null} [coupon_id] 优惠券ID（可选）
  * @param {String} [openid] 当前用户 openid（建议传）
- * @param {Number|String} [user_id] 当前用户 user_id（建议传，与 token 对应，便于后端绑定 openid）
+ * @param {Number|String} [user_id] 当前用户 user_id（建议传）
+ * @param {Number} [total_fee] 支付金额单位：分（必传，后端调微信统一下单需要）
  * @returns {Promise} 成功时返回支付参数（供 wx.requestPayment 使用）
  */
-export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_id = null) => {
+export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_id = null, total_fee = null) => {
   if (!order_no || !String(order_no).trim()) {
     return Promise.reject(new Error('订单号不能为空'))
   }
@@ -134,10 +135,15 @@ export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_
   if (coupon_id != null && coupon_id !== '') {
     query += `&coupon_id=${encodeURIComponent(String(coupon_id))}`
   }
+  const totalFeeNum = (total_fee != null && total_fee !== '' && !isNaN(Number(total_fee))) ? Math.round(Number(total_fee)) : null
+  if (totalFeeNum != null && totalFeeNum > 0) {
+    query += `&total_fee=${totalFeeNum}`
+  }
   const url = `/api/offline/zhifu/tongyi?${query}`
   const body = {}
   if (openid && String(openid).trim()) body.openid = String(openid).trim()
   if (user_id != null && user_id !== '') body.user_id = user_id
+  if (totalFeeNum != null && totalFeeNum > 0) body.total_fee = totalFeeNum
   return request.post(url, body)
 }
 

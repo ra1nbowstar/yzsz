@@ -28,35 +28,36 @@
       </view>
     </view>
 
-    <!-- 快捷功能 -->
-    <view class="quick-actions">
-      <view class="action-item" @tap="openBindCard">
-        <view class="action-icon iconfont icon-yingyongguanliyuanguanli" style="background: #e8f5e9; color: #4caf50;"></view>
-        <text class="action-text">银行卡绑定</text>
-      </view>
-      <view class="action-item" @tap="goToPage('/subPackages/page2/pages/shop/products')">
-        <view class="action-icon iconfont icon-shangpinguanli" style="background: #e8f5e9; color: #4caf50;"></view>
-        <text class="action-text">商品管理</text>
-      </view>
-      <view class="action-item" @tap="goToPage('/subPackages/page2/pages/shop/orders')">
-        <view class="action-icon iconfont icon-dingdanxiaoxi" style="background: #e8f5e9; color: #4caf50;"></view>
-        <text class="action-text">订单管理</text>
-      </view>
-      <view class="action-item" @tap="goToPage('/subPackages/page2/pages/shop/settings')">
-        <view class="action-icon iconfont icon-shezhi" style="background: #e8f5e9; color: #4caf50;"></view>
-        <text class="action-text">店铺设置</text>
-      </view>
-    </view>
-    
-    <!-- 功能菜单 -->
-    <view class="menu-section">
-      <view class="menu-item" @tap="goToPage('/subPackages/page2/pages/shop/inventory')">
-        <view class="menu-left">
-          <text class="menu-icon iconfont icon-shangpinguanli"></text>
-          <text class="menu-text">库存管理</text>
+    <!-- 快捷功能：支付单单独一行加大，其余网格 -->
+    <view class="quick-actions-wrap">
+      <view class="action-featured" @tap.stop="goToCreatePayment">
+        <view class="action-featured-icon iconfont icon-hongbao"></view>
+        <view class="action-featured-right">
+          <text class="action-featured-title">支付单</text>
+          <text class="action-featured-desc">创建收款码、线下收款</text>
         </view>
-        <view class="menu-right">
-          <text class="menu-arrow">›</text>
+        <text class="action-featured-arrow">›</text>
+      </view>
+      <view class="quick-actions">
+        <view class="action-item" @tap.stop="goToCertification">
+          <view class="action-icon iconfont icon-shangjiarenzheng" style="background: #e8f5e9; color: #4caf50;"></view>
+          <text class="action-text">商家认证</text>
+        </view>
+        <view class="action-item" @tap="openBindCard">
+          <view class="action-icon iconfont icon-yingyongguanliyuanguanli" style="background: #e8f5e9; color: #4caf50;"></view>
+          <text class="action-text">银行卡绑定</text>
+        </view>
+        <view class="action-item" @tap="goToPage('/subPackages/page2/pages/shop/products')">
+          <view class="action-icon iconfont icon-shangpinguanli" style="background: #e8f5e9; color: #4caf50;"></view>
+          <text class="action-text">商品管理</text>
+        </view>
+        <view class="action-item" @tap="goToPage('/subPackages/page2/pages/shop/orders')">
+          <view class="action-icon iconfont icon-dingdanxiaoxi" style="background: #e8f5e9; color: #4caf50;"></view>
+          <text class="action-text">订单管理</text>
+        </view>
+        <view class="action-item" @tap="goToPage('/subPackages/page2/pages/shop/settings')">
+          <view class="action-icon iconfont icon-shezhi" style="background: #e8f5e9; color: #4caf50;"></view>
+          <text class="action-text">店铺设置</text>
         </view>
       </view>
     </view>
@@ -171,6 +172,11 @@ const goToPage = (url) => {
   if (!finalUrl.startsWith('/')) finalUrl = '/' + finalUrl
   uni.navigateTo({ url: finalUrl })
 }
+
+/** 支付单：创建收款码页 */
+const goToCreatePayment = () => goToPage('/subPackages/page2/pages/merchant/create_payment')
+/** 商家认证：实名认证页 */
+const goToCertification = () => goToPage('/subPackages/page2/pages/merchant/certification')
 
 /**
  * 跳转到订单详情
@@ -411,44 +417,109 @@ onShow(() => {
 }
 
 /* 快捷功能 */
+.quick-actions-wrap {
+  margin-bottom: 30rpx;
+}
+
+/* 支付单：单独一行加大 */
+.action-featured {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 32rpx 36rpx;
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  border-radius: 20rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 6rpx 24rpx rgba(76, 175, 80, 0.2);
+  box-sizing: border-box;
+}
+
+.action-featured-icon {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.9);
+  color: #4caf50;
+  font-size: 52rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 28rpx;
+  flex-shrink: 0;
+}
+
+.action-featured-icon.iconfont {
+  font-size: 52rpx;
+  line-height: 1;
+}
+
+.action-featured-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8rpx;
+}
+
+.action-featured-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+.action-featured-desc {
+  font-size: 24rpx;
+  color: #558b2f;
+  opacity: 0.95;
+}
+
+.action-featured-arrow {
+  font-size: 40rpx;
+  color: #4caf50;
+  margin-left: 12rpx;
+}
+
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 20rpx;
-  margin-bottom: 30rpx;
 }
 
 .action-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 30rpx 20rpx;
+  padding: 28rpx 16rpx;
   background: white;
   border-radius: 16rpx;
   box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.05);
 }
 
 .action-icon {
-  width: 80rpx;
-  height: 80rpx;
+  width: 72rpx;
+  height: 72rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40rpx;
-  margin-bottom: 16rpx;
+  font-size: 36rpx;
+  margin-bottom: 12rpx;
   line-height: 1;
 }
 
 .action-icon .iconfont {
-  font-size: 40rpx;
+  font-size: 36rpx;
   line-height: 1;
 }
 
 .action-text {
-  font-size: 24rpx;
+  font-size: 22rpx;
   color: #333;
   text-align: center;
+  line-height: 1.3;
 }
 
 /* 功能菜单 */

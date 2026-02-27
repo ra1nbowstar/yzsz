@@ -3,11 +3,30 @@
     <view v-if="step===1">
       <form class="form">
         <input class="input" v-model="bank.account_name" :placeholder="modifyMode ? '新开户人姓名' : '开户人姓名'" />
-        <input class="input" v-model="bank.account_bank" :placeholder="modifyMode ? '新开户银行' : '开户银行（工商银行/建设银行等）'" />
+        <view class="picker-wrap">
+          <picker mode="selector" :range="bankList" range-key="name" @change="onBankChange">
+            <view class="input picker-input">{{ bank.account_bank || '请选择开户银行' }}</view>
+          </picker>
+        </view>
         <input class="input" v-model="bank.account_number" :placeholder="modifyMode ? '新银行卡号' : '银行卡号'" />
-        <input class="input" v-model="bank.bank_name" placeholder="开户支行全称" />
-        <input class="input" v-model="bank.bank_address_code" placeholder="银行地区编码（6位，如110105）" />
-        <input class="input" v-model="bank.bank_branch_id" placeholder="联行号（可选）" />
+        <view class="picker-wrap">
+          <picker mode="selector" :range="regionProvinces" range-key="name" @change="onProvinceChange">
+            <view class="input picker-input">{{ regionLabels.province || '请选择省/直辖市' }}</view>
+          </picker>
+        </view>
+        <view class="picker-wrap">
+          <picker mode="selector" :range="regionCities" range-key="name" @change="onCityChange">
+            <view class="input picker-input">{{ regionLabels.city || '请选择市' }}</view>
+          </picker>
+        </view>
+        <view class="picker-wrap">
+          <picker mode="selector" :range="regionDistricts" range-key="name" @change="onDistrictChange">
+            <view class="input picker-input">{{ regionLabels.district || '请选择区/县' }}</view>
+          </picker>
+        </view>
+        <input class="input" v-model="bank.bank_name" placeholder="开户支行全称（选完银行与地区后可从列表选择）" />
+        <input class="input" v-model="bank.bank_branch_id" placeholder="联行号（选支行后自动带出，可选填）" />
+        <input class="input" v-model="bank.sms_mobile" type="number" maxlength="11" placeholder="接收验证码手机号（必填）" />
         <view class="sms-row">
           <input class="input sms-input" v-model="bank.sms_code" placeholder="短信验证码" />
           <view
@@ -94,11 +113,88 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted, nextTick, watch } from 'vue'
+import { reactive, ref, onMounted, nextTick, watch, computed } from 'vue'
 import { verifyPayPassword } from '@/api/withdraw.js'
 import { bindBankCard, sendBankCardSms, getBankCardStatus, getMyBankCards, applyModifyBankCard } from '@/api/bankcard.js'
+import { BANK_LIST, getProvinces, getCities, getDistricts } from '@/utils/bank-region-data.js'
 
 const emit = defineEmits(['refreshed'])
+
+// 开户银行选择（展示用 name，提交用 name）
+const bankList = ref(BANK_LIST.map(name => ({ name })))
+const regionProvinces = ref(getProvinces())
+const regionCities = ref([])
+const regionDistricts = ref([])
+const selectedProvince = ref(null)
+const selectedCity = ref(null)
+const selectedDistrict = ref(null)
+const regionLabels = ref({ province: '', city: '', district: '' })
+
+const regionCitiesComputed = computed(() => {
+  if (!selectedProvince.value) return []
+  return getCities(selectedProvince.value.code)
+})
+const regionDistrictsComputed = computed(() => {
+  if (!selectedCity.value) return []
+  return getDistricts(selectedCity.value.code)
+})
+
+watch(regionCitiesComputed, (list) => {
+  regionCities.value = list || []
+  if (list.length && selectedCity.value && !list.find(c => c.code === selectedCity.value?.code)) {
+    selectedCity.value = null
+    selectedDistrict.value = null
+    bank.bank_address_code = ''
+    regionLabels.value = { ...regionLabels.value, city: '', district: '' }
+  }
+}, { immediate: true })
+watch(regionDistrictsComputed, (list) => {
+  regionDistricts.value = list || []
+  if (list.length && selectedDistrict.value && !list.find(d => d.code === selectedDistrict.value?.code)) {
+    selectedDistrict.value = null
+    bank.bank_address_code = ''
+    regionLabels.value = { ...regionLabels.value, district: '' }
+  }
+}, { immediate: true })
+
+function onBankChange(e) {
+  const i = e.detail?.value ?? e.target?.value
+  if (i != null && bankList.value[i]) {
+    bank.account_bank = bankList.value[i].name
+  }
+}
+function onProvinceChange(e) {
+  const i = e.detail?.value ?? e.target?.value
+  const list = getProvinces()
+  if (i != null && list[i]) {
+    selectedProvince.value = list[i]
+    regionLabels.value = { ...regionLabels.value, province: list[i].name }
+    selectedCity.value = null
+    selectedDistrict.value = null
+    regionLabels.value = { ...regionLabels.value, city: '', district: '' }
+    bank.bank_address_code = ''
+  }
+}
+function onCityChange(e) {
+  const i = e.detail?.value ?? e.target?.value
+  const list = getCities(selectedProvince.value?.code)
+  if (i != null && list[i]) {
+    selectedCity.value = list[i]
+    regionLabels.value = { ...regionLabels.value, city: list[i].name }
+    selectedDistrict.value = null
+    regionLabels.value = { ...regionLabels.value, district: '' }
+    bank.bank_address_code = ''
+  }
+}
+function onDistrictChange(e) {
+  const i = e.detail?.value ?? e.target?.value
+  const list = getDistricts(selectedCity.value?.code)
+  if (i != null && list[i]) {
+    selectedDistrict.value = list[i]
+    regionLabels.value = { ...regionLabels.value, district: list[i].name }
+    bank.bank_address_code = list[i].code
+  }
+}
 
 // 多输入框 PIN 管理
 const passwordDigits = ref(Array.from({length:6}).map(()=>''))
@@ -201,6 +297,7 @@ const bank = reactive({
   bank_name: '',
   bank_address_code: '',
   bank_branch_id: '',
+  sms_mobile: '',
   sms_code: ''
 })
 const smsSending = ref(false)
@@ -303,10 +400,12 @@ function onSendSmsTap() {
 async function sendSmsCode() {
   const num = (bank.account_number || '').replace(/\s+/g, '')
   if (!validateBank(num)) { uni.showToast({ title: '请先输入正确的银行卡号', icon: 'none' }); return }
+  const mobile = String(bank.sms_mobile || '').replace(/\s+/g, '')
+  if (!mobile || mobile.length !== 11) { uni.showToast({ title: '请填写11位接收验证码手机号', icon: 'none' }); return }
   smsSending.value = true
   smsCountdown.value = 0
   try {
-    await sendBankCardSms(num)
+    await sendBankCardSms(num, mobile)
     uni.showToast({ title: '验证码已发送', icon: 'success' })
     smsCountdown.value = 60
     smsTimer = setInterval(() => {
@@ -329,6 +428,7 @@ async function bindCard() {
   const num = (bank.account_number || '').replace(/\s+/g, '')
   if (!validateBank(num)) { uni.showToast({ title: '请输入正确的银行卡号', icon: 'none' }); return }
   if (!bank.sms_code || bank.sms_code.length < 4) { uni.showToast({ title: '请输入短信验证码', icon: 'none' }); return }
+  if (!bank.sms_mobile || String(bank.sms_mobile).replace(/\s+/g, '').length !== 11) { uni.showToast({ title: '请填写接收验证码手机号', icon: 'none' }); return }
   if (!bank.account_name || !bank.account_bank) { uni.showToast({ title: '请填写开户人姓名和开户银行', icon: 'none' }); return }
 
   submitting.value = true
@@ -341,6 +441,7 @@ async function bindCard() {
         new_bank_name: bank.bank_name || bank.account_bank,
         bank_address_code: bank.bank_address_code || '110105',
         bank_branch_id: bank.bank_branch_id || '',
+        sms_mobile: String(bank.sms_mobile || '').replace(/\s+/g, ''),
         sms_code: bank.sms_code
       }
       await applyModifyBankCard(payload)
@@ -354,6 +455,7 @@ async function bindCard() {
         bank_name: bank.bank_name || bank.account_bank,
         bank_address_code: bank.bank_address_code || '110105',
         bank_branch_id: bank.bank_branch_id || '',
+        sms_mobile: String(bank.sms_mobile || '').replace(/\s+/g, ''),
         sms_code: bank.sms_code
       }
       await bindBankCard(payload)
@@ -378,7 +480,14 @@ function startModify() {
   bank.bank_name = ''
   bank.bank_address_code = ''
   bank.bank_branch_id = ''
+  bank.sms_mobile = ''
   bank.sms_code = ''
+  selectedProvince.value = null
+  selectedCity.value = null
+  selectedDistrict.value = null
+  regionLabels.value = { province: '', city: '', district: '' }
+  regionCities.value = []
+  regionDistricts.value = []
 }
 
 function confirmUnbind(){
@@ -492,6 +601,18 @@ function doUnbindConfirmed() {
 .form .input:focus {
   background: #fff;
   border-color: #1890ff;
+}
+.picker-wrap {
+  margin: 0 0 24rpx;
+}
+.picker-input {
+  display: block;
+  padding: 24rpx 28rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid #e8e8e8;
+  font-size: 28rpx;
+  background: #fafafa;
+  color: #333;
 }
 .sms-row {
   display: flex;

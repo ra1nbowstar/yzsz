@@ -320,14 +320,12 @@ const switchToUserMode = () => {
           console.log('已保存用户模式到本地存储')
           // 重新启动应用
           uni.reLaunch({
-            url: '/pages/home/home',
-            success: () => {
+            url: '/pages/home/home'
+          }).then(() => {
               console.log('成功跳转到首页')
-            },
-            fail: (err) => {
+          }).catch(err => {
               console.error('跳转失败', err)
               uni.showToast({ title: '跳转失败', icon: 'none' })
-            }
           })
         } catch (error) {
           console.error('切换模式失败', error)
