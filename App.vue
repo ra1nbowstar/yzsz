@@ -6,7 +6,11 @@
 	export default {
 		onLaunch(options) {
 			// App Launch
-			
+			// 冷启动时清除「跳过自动进商家」标志，使商家用户下次打开时仍默认进商家中心
+			try {
+				uni.removeStorageSync('skip_auto_shop_redirect')
+			} catch (e) { /* ignore */ }
+
 			// ========== 打印扫码内容 ==========
 			console.log('========== [App启动] 扫码进入 - 完整参数信息 ==========')
 			console.log('📋 [App启动] options 完整对象:', JSON.stringify(options, null, 2))
