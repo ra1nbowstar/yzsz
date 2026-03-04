@@ -90,8 +90,8 @@
 			</view>
 		</view>
 
-		<!-- 配送方式选择 -->
-		<view class="delivery-way-section">
+		<!-- 配送方式选择 - 0元订单时隐藏 -->
+		<view class="delivery-way-section" v-if="!isFreeOrder">
 			<view class="section-header">
 				<text class="section-title">配送方式</text>
 			</view>
@@ -224,11 +224,18 @@
 
 		<!-- 提交订单按钮 -->
 		<view class="submit-bar">
-			<view class="total-info">
-				<text class="total-label">实付</text>
-				<text class="total-price">¥{{ formatAmount(actualAmount) }}</text>
-			</view>
-			<button class="submit-btn" @click="submitOrder">提交订单</button>
+		  <view class="total-info">
+		    <text class="total-label">实付</text>
+		    <text class="total-price">¥{{ formatAmount(actualAmount) }}</text>
+		    <text v-if="isFreeOrder" class="free-tag">免费订单</text>
+		  </view>
+		  <button 
+		    class="submit-btn" 
+		    :class="{ 'btn-free': isFreeOrder }"
+		    @click="submitOrder"
+		  >
+		    {{ isFreeOrder ? '免费领取' : '提交订单' }}
+		  </button>
 		</view>
 	</view>
 </template>
@@ -554,7 +561,295 @@ const couponDiscount = computed(() => {
 const actualAmount = computed(() => {
 	return Math.max(0, originalAmount.value - pointsDiscount.value - couponDiscount.value)
 })
-
+// 是否为0元订单
+const isFreeOrder = computed(() => {
+  return actualAmount.value <= 0
+})
+const submitFreeOrder = async () => {
+	// 检查收货地址（免费订单也需要地址）
+	if (!selectedAddress.value) {
+		uni.showToast({ title: '请选择收货地址', icon: 'none' })
+		return
+	}
+	
+	// 检查用户积分是否足够
+	if (pointsToUse.value > userPoints.value) {
+		uni.showToast({ title: '积分不足', icon: 'none' })
+		return
+	}
+	
+	console.log('=== 开始提交免费订单 ===')
+	uni.showLoading({ title: '提交中...' })
+	
+	try {
+		// 获取用户信息
+		const userInfo = uni.getStorageSync('userInfo') || {}
+		const userId = userInfo.id || userInfo.user_id
+		
+		if (!userId) {
+			uni.hideLoading()
+			uni.showToast({ title: '请先登录', icon: 'none' })
+			return
+		}
+		
+		// 检查商品列表
+		if (!orderItems.value || orderItems.value.length === 0) {
+			uni.hideLoading()
+			uni.showToast({ title: '购物车为空', icon: 'none' })
+			return
+		}
+		
+		// 获取地址ID
+		const addressId = selectedAddress.value?.id || 
+		                   selectedAddress.value?.addr_id || 
+		                   selectedAddress.value?.address_id
+		
+		if (!addressId) {
+			uni.hideLoading()
+			uni.showToast({ title: '地址ID无效', icon: 'none' })
+			return
+		}
+		
+		const finalUserId = parseInt(userId)
+		const finalAddressId = parseInt(addressId)
+		
+		// 构建地址对象
+		const customAddress = selectedAddress.value ? {
+			name: selectedAddress.value.name || '',
+			phone: selectedAddress.value.phone || selectedAddress.value.mobile || '',
+			address: selectedAddress.value.fullAddress || 
+			         `${selectedAddress.value.province || ''}${selectedAddress.value.city || ''}${selectedAddress.value.district || ''}${selectedAddress.value.detail || ''}`,
+			province: selectedAddress.value.province || '',
+			city: selectedAddress.value.city || '',
+			district: selectedAddress.value.district || '',
+			detail: selectedAddress.value.detail || '',
+			additionalProp1: {}
+		} : { additionalProp1: {} }
+		
+		// 构建商品列表
+		const items = orderItems.value.map((item) => {
+			const quantity = parseInt(item.quantity) || 1
+			
+			let specsValue = ''
+			let skuValue = item.sku || item.sku_code || ''
+			
+			if (item.specifications && typeof item.specifications === 'object') {
+				const specArray = Object.keys(item.specifications).map(key => {
+					const value = item.specifications[key]
+					if (value !== null && value !== undefined && value !== '') {
+						return `${key}：${value}`
+					}
+					return null
+				}).filter(Boolean)
+				specsValue = specArray.join('；')
+			} else if (item.specs && typeof item.specs === 'object') {
+				const specArray = Object.keys(item.specs).map(key => {
+					const value = item.specs[key]
+					if (value !== null && value !== undefined && value !== '') {
+						return `${key}：${value}`
+					}
+					return null
+				}).filter(Boolean)
+				specsValue = specArray.join('；')
+			} else if (item.spec) {
+				specsValue = item.spec
+			}
+			
+			return {
+				product_id: item.id,
+				quantity: quantity,
+				unit_price: parseFloat(item.price) || 0,
+				specs: specsValue,
+				sku: skuValue
+			}
+		})
+		
+		// 构建订单请求数据
+		let orderRequestData = {}
+		
+		if (orderSource.value === 'direct') {
+			const buyNowItems = items.map(item => ({
+				product_id: item.product_id,
+				quantity: item.quantity,
+				price: item.unit_price,
+				specs: item.specs || '',
+				sku: item.sku || ''
+			}))
+			
+			orderRequestData = {
+				user_id: finalUserId,
+				address_id: finalAddressId,
+				custom_address: customAddress,
+				buy_now: true,
+				buy_now_items: buyNowItems,
+				delivery_way: deliveryWay.value || 'platform',
+				pointsUsed: pointsToUse.value,
+				pointsDiscount: pointsDiscount.value,
+				coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null,
+				couponDiscount: couponDiscount.value,
+				actualAmount: 0,
+				is_free_order: true
+			}
+		} else {
+			orderRequestData = {
+				user_id: finalUserId,
+				address_id: finalAddressId,
+				custom_address: customAddress,
+				delivery_way: deliveryWay.value || 'platform',
+				coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null,
+				pointsUsed: pointsToUse.value,
+				pointsDiscount: pointsDiscount.value,
+				actualAmount: 0,
+				is_free_order: true
+			}
+		}
+		
+		console.log('[免费订单] 提交数据:', JSON.stringify(orderRequestData, null, 2))
+		
+		// 创建订单
+		const orderRes = await createOrder(orderRequestData)
+		
+		const orderData = orderRes.data || orderRes
+		const apiOrderNo = orderData.orderNo || orderData.order_number || orderData.order_no
+		const apiOrderId = orderData.id || orderData.orderId || orderData.order_id
+		
+		// 扣除积分（如果有使用）
+		if (pointsToUse.value > 0) {
+			try {
+				const pointsToDeduct = roundTo4(pointsToUse.value)
+				console.log('[免费订单] 扣除积分:', pointsToDeduct)
+				await updatePointsWithAutoMobile({
+					type: 'member',
+					amount: -pointsToDeduct,
+					reason: `免费订单${apiOrderNo || 'FREE'}积分抵扣`
+				})
+				userPoints.value = roundTo4(Math.max(0, userPoints.value - pointsToDeduct))
+				const userInfo = uni.getStorageSync('userInfo') || {}
+				if (userInfo.points !== undefined) {
+					userInfo.points = roundTo4(Math.max(0, userInfo.points - pointsToDeduct))
+					uni.setStorageSync('userInfo', userInfo)
+				}
+			} catch (pointsError) {
+				console.error('[免费订单] 积分扣除失败:', pointsError)
+			}
+		}
+		
+		// 核销优惠券（如果有使用）
+		if (selectedCoupon.value) {
+		    try {
+		        console.log('[免费订单] 开始核销优惠券:', selectedCoupon.value.id)
+		        await useCoupon({ 
+		            coupon_id: selectedCoupon.value.id,
+		            user_id: finalUserId
+		        })
+		        console.log('[免费订单] 优惠券核销成功')
+		    } catch (couponError) {
+		        console.error('[免费订单] 优惠券核销失败:', couponError)
+		        uni.showToast({ title: '优惠券核销失败，请联系客服', icon: 'none' })
+		    }
+		}
+		
+		// 确保有订单ID
+		const finalOrderId = apiOrderId || orderData.id || orderData.order_id
+		
+		if (!finalOrderId) {
+		    console.error('[免费订单] 订单ID为空，响应数据:', orderData)
+		    uni.hideLoading()
+		    uni.showToast({ title: '订单创建成功但无法查看详情', icon: 'none' })
+		    setTimeout(() => {
+		        uni.switchTab({ url: '/pages/order/list' })
+		    }, 2000)
+		    return
+		}
+		
+		// ===== 所有数据操作必须在跳转前完成 =====
+		
+		// 1. 保存订单到本地存储
+		const newOrder = {
+			id: finalOrderId,
+			orderNo: apiOrderNo || 'FREE' + Date.now(),
+			status: 'paid',
+			totalAmount: originalAmount.value,
+			productTotal: productTotal.value,
+			actualAmount: 0,
+			pointsUsed: pointsToUse.value,
+			pointsDiscount: pointsDiscount.value,
+			couponDiscount: couponDiscount.value,
+			coupon: selectedCoupon.value,
+			earnPoints: 0,
+			createTime: Date.now(),
+			products: orderItems.value.map(item => ({
+				id: item.id,
+				name: item.name,
+				image: item.image,
+				price: item.price,
+				quantity: item.quantity,
+				isVip: item.isVip,
+				productType: item.productType,
+				maxPointsDeduction: item.maxPointsDeduction
+			})),
+			address: selectedAddress.value,
+			deliveryFee: deliveryFee.value,
+			isFreeOrder: true
+		}
+		
+		const storedOrders = uni.getStorageSync('orderList') || []
+		storedOrders.unshift(newOrder)
+		uni.setStorageSync('orderList', storedOrders)
+		
+		// 2. 同步到商家端
+		ensureMerchantOrder({
+			id: finalOrderId,
+			orderNo: apiOrderNo || newOrder.orderNo,
+			status: 'paid',
+			customerName: selectedAddress.value.name,
+			customerPhone: selectedAddress.value.phone,
+			totalAmount: originalAmount.value,
+			productTotal: productTotal.value,
+			actualAmount: 0,
+			products: orderItems.value.map(item => ({ ...item })),
+			address: selectedAddress.value,
+			createTime: formatDateTime(Date.now()),
+			distance: selectedAddress.value.distanceKm || 0,
+			deliveryFee: deliveryFee.value,
+			isFreeOrder: true
+		})
+		
+		// 3. 添加订单消息
+		addLocalMessage({
+			type: 'order',
+			title: '免费订单领取成功',
+			content: `您的免费订单【${apiOrderNo || newOrder.orderNo}】已成功领取`,
+			orderId: finalOrderId,
+			orderNo: apiOrderNo || newOrder.orderNo,
+			amount: 0
+		})
+		
+		// 4. 隐藏loading并显示成功提示
+		uni.hideLoading()
+		uni.showToast({ title: '领取成功', icon: 'success' })
+		
+		// 5. 只有一个跳转：跳转到订单详情页（带isFree标记）
+		setTimeout(() => {
+			uni.redirectTo({
+				url: `/pages/order/detail?id=${finalOrderId}&isFree=true`
+			})
+		}, 1500)
+		
+	} catch (error) {
+		uni.hideLoading()
+		console.error('创建免费订单失败:', error)
+		uni.showToast({ 
+			title: getOrderErrorTitle(error), 
+			icon: 'none',
+			duration: 3000
+		})
+		// 错误时也可以跳转到订单列表
+		setTimeout(() => {
+			uni.switchTab({ url: '/pages/order/list' })
+		}, 2000)
+	}
+}
 // 可获得积分：商品实付价格的1倍（不含配送费）
 // 商品实付价格 = 商品原价 - 积分抵扣 - 优惠券折扣
 const productActualAmount = computed(() => {
@@ -786,7 +1081,12 @@ const getOrderErrorTitle = (error) => {
 }
 
 // 提交订单
-const submitOrder = () => {
+const submitOrder = async () => {  // ← 添加 async
+	// 0元订单特殊处理
+	if (isFreeOrder.value) {
+	    await submitFreeOrder()  // ← 添加 await
+	    return
+	  }
 	if (!deliveryInfo.value.allowed) {
 		uni.showToast({ title: deliveryInfo.value.reason || '暂不支持该地址', icon: 'none' })
 		return
@@ -1387,6 +1687,21 @@ onShow(() => {
 	min-height: 100vh;
 	background: #f5f5f5;
 	padding-bottom: 120rpx;
+}
+
+/* 免费订单标签 */
+.free-tag {
+	background: #4caf50;
+	color: white;
+	font-size: 22rpx;
+	padding: 4rpx 12rpx;
+	border-radius: 8rpx;
+	margin-left: 16rpx;
+}
+
+/* 免费领取按钮样式 */
+.submit-btn.btn-free {
+	background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
 }
 
 /* 收货地址 */

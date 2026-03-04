@@ -1,149 +1,146 @@
 {
-  "name": "小程序",
-  "appid": "__UNI__B08D4F3",
-  "description": "",
-  "versionName": "1.0.0",
-  "versionCode": "100",
-  "transformPx": false,
-  "app-plus": {
-    "usingComponents": true,
-    "nvueStyleCompiler": "uni-app",
-    "compilerVersion": 3,
-    "splashscreen": {
-      "alwaysShowBeforeRender": true,
-      "waiting": true,
-      "autoclose": true,
-      "delay": 0
-    },
-    "modules": {
-      "Geolocation": {},
-      "Camera": {},
-      "Payment": {},
-      "OAuth": {},
-      "Barcode": {}
-    },
-    "android": {
-      "minSdkVersion": 21,
-      "targetSdkVersion": 33,
-      "abiFilters": [
-        "armeabi-v7a",
-        "arm64-v8a"
-      ],
-      "permissions": [
-        "<uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\"/>",
-        "<uses-permission android:name=\"android.permission.MOUNT_UNMOUNT_FILESYSTEMS\"/>",
-        "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
-        "<uses-permission android:name=\"android.permission.READ_LOGS\"/>",
-        "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
-        "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
-        "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
-        "<uses-permission android:name=\"android.permission.CAMERA\"/>",
-        "<uses-permission android:name=\"android.permission.GET_ACCOUNTS\"/>",
-        "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
-        "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
-        "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
-        "<uses-permission android:name=\"android.permission.FLASHLIGHT\"/>",
-        "<uses-feature android:name=\"android.hardware.camera\"/>",
-        "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>",
-        "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
-        "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
-        "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
-        "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
-        "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" android:minSdkVersion=\"33\"/>"
-      ]
-    },
-    "ios": {
-      "dSYMs": false
-    },
-    "sdkConfigs": {
-      "geolocation": {
-        "system": {
-          "__platform__": ["ios", "android"]
-        }
-      },
-      "ad": {},
-      "payment": {
-        "alipay": {
-          "__platform__": ["ios", "android"]
+    "name" : "小程序",
+    "appid" : "__UNI__B08D4F3",
+    "description" : "",
+    "versionName" : "1.0.0",
+    "versionCode" : "100",
+    "transformPx" : false,
+    "app-plus" : {
+        "usingComponents" : true,
+        "nvueStyleCompiler" : "uni-app",
+        "compilerVersion" : 3,
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
         },
-        "appleiap": {}
-      },
-      "oauth": {
-        "weixin": {
-          "appid": "wx0cf7c42d80b7fa17",
-          "UniversalLinks": ""
-        }
-      },
-      "maps": {
-        "amap": {
-          "name": "",
-          "appkey_ios": "",
-          "appkey_android": ""
-        }
-      }
-    },
-    "icons": {
-      "android": {
-        "hdpi": "static/logo.png",
-        "xhdpi": "static/logo.png",
-        "xxhdpi": "static/logo.png",
-        "xxxhdpi": "static/logo.png"
-      },
-      "ios": {
-        "appstore": "static/logo.png",
-        "ipad": {
-          "app": "static/logo.png",
-          "app@2x": "static/logo.png",
-          "notification": "static/logo.png",
-          "notification@2x": "static/logo.png",
-          "proapp@2x": "static/logo.png",
-          "settings": "static/logo.png",
-          "settings@2x": "static/logo.png",
-          "spotlight": "static/logo.png",
-          "spotlight@2x": "static/logo.png"
+        "modules" : {
+            "Geolocation" : {},
+            "Camera" : {},
+            "Payment" : {},
+            "OAuth" : {},
+            "Barcode" : {}
         },
-        "iphone": {
-          "app@2x": "static/logo.png",
-          "app@3x": "static/logo.png",
-          "notification@2x": "static/logo.png",
-          "notification@3x": "static/logo.png",
-          "settings@2x": "static/logo.png",
-          "settings@3x": "static/logo.png",
-          "spotlight@2x": "static/logo.png",
-          "spotlight@3x": "static/logo.png"
+        "android" : {
+            "minSdkVersion" : 21,
+            "targetSdkVersion" : 33,
+            "abiFilters" : [ "armeabi-v7a", "arm64-v8a" ],
+            "permissions" : [
+                "<uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\"/>",
+                "<uses-permission android:name=\"android.permission.MOUNT_UNMOUNT_FILESYSTEMS\"/>",
+                "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
+                "<uses-permission android:name=\"android.permission.READ_LOGS\"/>",
+                "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+                "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
+                "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                "<uses-permission android:name=\"android.permission.GET_ACCOUNTS\"/>",
+                "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
+                "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
+                "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
+                "<uses-permission android:name=\"android.permission.FLASHLIGHT\"/>",
+                "<uses-feature android:name=\"android.hardware.camera\"/>",
+                "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>",
+                "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+                "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+                "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+                "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
+                "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" android:minSdkVersion=\"33\"/>"
+            ]
+        },
+        "ios" : {
+            "dSYMs" : false
+        },
+        "sdkConfigs" : {
+            "geolocation" : {
+                "system" : {
+                    "__platform__" : [ "ios", "android" ]
+                }
+            },
+            "ad" : {},
+            "payment" : {
+                "alipay" : {
+                    "__platform__" : [ "ios", "android" ]
+                },
+                "appleiap" : {}
+            },
+            "oauth" : {
+                "weixin" : {
+                    "appid" : "wx0cf7c42d80b7fa17",
+                    "UniversalLinks" : ""
+                }
+            },
+            "maps" : {
+                "amap" : {
+                    "name" : "",
+                    "appkey_ios" : "",
+                    "appkey_android" : ""
+                }
+            }
+        },
+        "icons" : {
+            "android" : {
+                "hdpi" : "static/logo.png",
+                "xhdpi" : "static/logo.png",
+                "xxhdpi" : "static/logo.png",
+                "xxxhdpi" : "static/logo.png"
+            },
+            "ios" : {
+                "appstore" : "static/logo.png",
+                "ipad" : {
+                    "app" : "static/logo.png",
+                    "app@2x" : "static/logo.png",
+                    "notification" : "static/logo.png",
+                    "notification@2x" : "static/logo.png",
+                    "proapp@2x" : "static/logo.png",
+                    "settings" : "static/logo.png",
+                    "settings@2x" : "static/logo.png",
+                    "spotlight" : "static/logo.png",
+                    "spotlight@2x" : "static/logo.png"
+                },
+                "iphone" : {
+                    "app@2x" : "static/logo.png",
+                    "app@3x" : "static/logo.png",
+                    "notification@2x" : "static/logo.png",
+                    "notification@3x" : "static/logo.png",
+                    "settings@2x" : "static/logo.png",
+                    "settings@3x" : "static/logo.png",
+                    "spotlight@2x" : "static/logo.png",
+                    "spotlight@3x" : "static/logo.png"
+                }
+            }
         }
-      }
-    }
-  },
-  "quickapp": {},
-  "mp-weixin": {
-    "appid": "wx0cf7c42d80b7fa17",
-    "setting": {
-      "urlCheck": false,
-      "es6": true,
-      "postcss": true,
-      "minified": true,
-      "lazyCodeLoading": "requiredComponents"
     },
-    "usingComponents": true,
-    "requiredPrivateInfos": ["getLocation", "chooseLocation", "chooseAddress"],
-    "permission": {
-      "scope.userLocation": {
-        "desc": "用于获取您的位置信息,自动填充收货地址"
-      }
-    }
-  },
-  "mp-alipay": {
-    "usingComponents": true
-  },
-  "mp-baidu": {
-    "usingComponents": true
-  },
-  "mp-toutiao": {
-    "usingComponents": true
-  },
-  "uniStatistics": {
-    "enable": false
-  },
-  "vueVersion": "3"
+    "quickapp" : {},
+    "mp-weixin" : {
+        "appid" : "wx0cf7c42d80b7fa17",
+        "setting" : {
+            "urlCheck" : false,
+            "es6" : true,
+            "postcss" : true,
+            "minified" : true,
+            "lazyCodeLoading" : "requiredComponents"
+        },
+        "usingComponents" : true,
+        "requiredPrivateInfos" : [ "getLocation", "chooseLocation", "chooseAddress" ],
+        "permission" : {
+            "scope.userLocation" : {
+                "desc" : "用于获取您的位置信息,自动填充收货地址"
+            }
+        }
+    },
+    "mp-alipay" : {
+        "usingComponents" : true
+    },
+    "mp-baidu" : {
+        "usingComponents" : true
+    },
+    "mp-toutiao" : {
+        "usingComponents" : true
+    },
+    "uniStatistics" : {
+        "enable" : false
+    },
+    "vueVersion" : "3"
 }

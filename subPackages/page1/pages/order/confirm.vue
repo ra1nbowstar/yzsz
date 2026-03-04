@@ -65,8 +65,8 @@
       </view>
     </view>
 
-    <!-- 支付方式 -->
-    <view class="payment-section">
+    <!-- 支付方式 - 0元订单时隐藏 -->
+    <view class="payment-section" v-if="!isFreeOrder">
       <view class="section-header">
         <text class="section-title">支付方式</text>
       </view>
@@ -186,19 +186,20 @@
       <view class="total-info">
         <text class="total-label">实付：</text>
         <text class="total-price">¥{{ formatAmount(totalAmount) }}</text>
-        <text v-if="discountAmount > 0" class="discount-text">
+        <text v-if="discountAmount > 0 && !isFreeOrder" class="discount-text">
           (已优惠¥{{ formatAmount(discountAmount) }})
         </text>
+        <text v-if="isFreeOrder" class="free-tag">免费订单</text>
       </view>
       <button 
         class="submit-btn" 
+        :class="{ 'btn-free': isFreeOrder }"
         :disabled="!canSubmit"
         @tap="submitOrder"
       >
-        提交订单
+        {{ isFreeOrder ? '免费领取' : '提交订单' }}
       </button>
     </view>
-
     <!-- 地址选择弹窗 -->
     <view v-if="showAddressModal" class="address-modal" @tap="hideAddressModal">
       <view class="modal-content" @tap.stop>
@@ -474,11 +475,21 @@ const totalAmount = computed(() => {
   return Math.max(0, (product + delivery - discount))
 })
 
+const isFreeOrder = computed(() => {
+  return totalAmount.value <= 0
+})
+
+
 const charityAmount = computed(() => {
   return calculateCharityAmount(totalAmount.value)
 })
 
 const canSubmit = computed(() => {
+  // 0元订单不需要选择支付方式
+  if (isFreeOrder.value) {
+    return selectedAddress.value && selectedDelivery.value
+  }
+  // 正常订单需要选择支付方式
   return selectedAddress.value && selectedDelivery.value && selectedPayment.value
 })
 
@@ -658,18 +669,36 @@ const selectPayment = (paymentId) => {
 /**
  * 提交订单
  */
+/**
+ * 提交订单
+ */
 const submitOrder = async () => {
+  console.log('=== confirm.vue submitOrder ===')
+  console.log('isFreeOrder:', isFreeOrder.value)
+  console.log('totalAmount:', totalAmount.value)
+  
   if (!canSubmit.value) {
     uni.showToast({ title: '请完善订单信息', icon: 'none' })
     return
   }
   
-
+  // 0元订单特殊处理
+  if (isFreeOrder.value) {
+    console.log('✅ 进入0元订单流程')
+    await submitFreeOrder()
+    return
+  }
   
-  uni.showLoading({ title: '提交中...' })
+  console.log('❌ 进入正常支付流程')
+  await submitPayOrder()
+}
+/**
+ * 提交0元免费订单
+ */
+const submitFreeOrder = async () => {
+  uni.showLoading({ title: '领取中...' })
   
   try {
-    // 构造API请求数据
     const userInfo = uni.getStorageSync('userInfo') || {}
     const userId = userInfo.id || userInfo.user_id
     
@@ -677,7 +706,6 @@ const submitOrder = async () => {
       throw new Error('用户未登录')
     }
     
-    // 构造商品列表
     const products = orderItems.value.map(item => ({
       product_id: item.productId || item.id,
       quantity: item.quantity,
@@ -688,7 +716,73 @@ const submitOrder = async () => {
     const orderData = {
       user_id: userId,
       address_id: selectedAddress.value.id,
-      address: selectedAddress.value, // 传递完整地址对象以防万一
+      address: selectedAddress.value,
+      products: products,
+      remark: orderRemark.value,
+      delivery_type: selectedDelivery.value,
+      pay_way: 'free',
+      coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null,
+      is_free_order: true,
+      actual_amount: 0
+    }
+    
+    const { createOrder } = await import('@/api/order.js')
+    const res = await createOrder(orderData)
+    
+    uni.hideLoading()
+    
+    const createdOrder = res.data || res
+    const orderId = createdOrder.id
+    const orderNo = createdOrder.order_no || createdOrder.orderNo
+    
+    uni.showToast({ 
+      title: '领取成功', 
+      icon: 'success',
+      duration: 1500
+    })
+    
+    setTimeout(() => {
+      uni.redirectTo({ 
+        url: `/subPackages/page1/pages/order/detail?id=${orderId}&orderNo=${orderNo}` 
+      })
+    }, 1500)
+    
+  } catch (error) {
+    uni.hideLoading()
+    console.error('领取失败', error)
+    uni.showToast({ 
+      title: error.message || '领取失败，请重试', 
+      icon: 'none',
+      duration: 2000
+    })
+  }
+}
+
+/**
+ * 提交正常支付订单
+ */
+const submitPayOrder = async () => {
+  uni.showLoading({ title: '提交中...' })
+  
+  try {
+    const userInfo = uni.getStorageSync('userInfo') || {}
+    const userId = userInfo.id || userInfo.user_id
+    
+    if (!userId) {
+      throw new Error('用户未登录')
+    }
+    
+    const products = orderItems.value.map(item => ({
+      product_id: item.productId || item.id,
+      quantity: item.quantity,
+      specs: item.spec || '',
+      price: item.price
+    }))
+    
+    const orderData = {
+      user_id: userId,
+      address_id: selectedAddress.value.id,
+      address: selectedAddress.value,
       products: products,
       remark: orderRemark.value,
       delivery_type: selectedDelivery.value,
@@ -696,18 +790,11 @@ const submitOrder = async () => {
       coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null
     }
     
-
-    
-    // 调用API创建订单
     const { createOrder } = await import('@/api/order.js')
     const res = await createOrder(orderData)
     
-
-    
     uni.hideLoading()
     
-    // 获取创建成功的订单信息
-    // 兼容不同的响应结构
     const createdOrder = res.data || res
     const orderNo = createdOrder.order_no || createdOrder.orderNo
     const orderId = createdOrder.id
@@ -717,7 +804,6 @@ const submitOrder = async () => {
       throw new Error('订单创建失败：未返回订单号')
     }
     
-    // 完整订单数据（用于支付页面显示）
     const completeOrderData = {
       items: orderItems.value,
       productTotal: productTotal.value,
@@ -726,7 +812,6 @@ const submitOrder = async () => {
       totalAmount: finalAmount
     }
     
-    // 跳转到支付页面
     const paymentData = {
       orderNo: orderNo,
       orderId: orderId,
@@ -736,8 +821,6 @@ const submitOrder = async () => {
       paymentMethod: selectedPayment.value,
       orderData: completeOrderData
     }
-    
-
     
     uni.redirectTo({ 
       url: `/page1/payment/payment?data=${encodeURIComponent(JSON.stringify(paymentData))}` 
@@ -1495,7 +1578,27 @@ onShow(() => {
   border-radius: 44rpx;
   border: none;
 }
+/* 免费订单标签 */
+.free-tag {
+  background: #4caf50;
+  color: white;
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  margin-left: 16rpx;
+}
+
+/* 免费领取按钮样式 */
+.submit-btn.btn-free {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  box-shadow: 0 4rpx 12rpx rgba(76, 175, 80, 0.3);
+}
+
+.submit-btn.btn-free:active {
+  background: #45a049;
+}
 </style>
+
 
 <style>
 @import "@/static/999/iconfont.css";

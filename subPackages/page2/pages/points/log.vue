@@ -15,7 +15,7 @@
           class="log-card"
         >
           <view class="card-left">
-            <text class="log-reason">{{ item.flow_type || item.reason || item.description || '雨点变动' }}</text>
+            <text class="log-reason">{{ formatFlowType(item.flow_type) || item.reason || item.description || '雨点变动' }}</text>
             <text class="log-time">{{ formatTime(item.created_at || item.create_time || item.time || item.flow_time) }}</text>
             <text v-if="item.order_no || item.orderNo || item.order_number" class="log-order">
               订单：{{ item.order_no || item.orderNo || item.order_number }}
@@ -27,7 +27,7 @@
               <text class="amount-value">{{ formatAmount(item) }}</text>
             </view>
             <text class="source-tag" v-if="item.flow_type || item.points_type || item.type">
-              {{ item.flow_type || item.points_type || item.type }}
+              {{ formatFlowType(item.flow_type) || item.points_type || item.type }}
             </text>
           </view>
         </view>
@@ -61,6 +61,27 @@ const page = ref(1)
 const pageSize = ref(30)
 const hasMore = ref(true)
 const total = ref(0)
+
+/**
+ * 格式化流水类型显示
+ */
+const formatFlowType = (flowType) => {
+  const typeMap = {
+    // 英文 key（兼容）
+    'subsidy_points': '日补贴收入',
+    'referral_points': '推荐奖励收入',
+    'team_reward_points': '团队奖励收入',
+    'honor_director': '联创星级收入',
+    'true_total_points': '优惠券扣减',
+    // 中文 key（后端实际返回）
+    '周补贴收入': '日补贴收入',
+    '推荐奖励收入': '推荐奖励收入',
+    '团队奖励收入': '团队奖励收入',
+    '联创星级收入': '联创星级收入',
+    '优惠券扣减': '优惠券扣减'
+  }
+  return typeMap[flowType] || flowType
+}
 
 /**
  * 格式化时间

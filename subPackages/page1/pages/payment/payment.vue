@@ -100,7 +100,7 @@ import { updatePoints } from '@/api/points.js'
 import { addLocalMessage } from '@/api/message.js'
 // 注意：不再调用 /order/pay，订单状态更新由微信支付异步通知 /wechat-pay/notify 处理
 // import { payOrder } from '@/api/order.js'
-import { createJsapiOrder, notifyWeChatPay } from '../../api/payment.js'
+import { createJsapiOrder, notifyWeChatPay, wechatUnifiedOrder } from '../../api/payment.js'
 import { upgradeUser, getUserInfo as getUserInfoApi, refreshUserInfo } from '@/api/user.js'
 import { getLevelText } from '@/utils/level.js'
 import { useCoupon } from '@/api/coupon.js'
@@ -183,8 +183,29 @@ const handlePayment = async () => {
   // 微信支付
   if (selectedMethod.value === 1) {
     try {
+      // 使用积分和优惠券后应付金额为 0 时，不调微信支付，直接调用后端完成订单
+      const amount = toAmount(paymentData.value.amount)
+      if (amount <= 0) {
+        uni.showLoading({ title: '正在确认...' })
+        try {
+          const { couponId, pointsToUse } = getPaymentParams()
+          await wechatUnifiedOrder({
+            orderNo: paymentData.value.orderNo,
+            couponId: couponId || undefined,
+            pointsToUse: pointsToUse || 0
+          })
+          uni.hideLoading()
+          handlePaymentSuccess()
+        } catch (e) {
+          uni.hideLoading()
+          const msg = (e && (e.message || e.msg)) || '确认失败'
+          uni.showToast({ title: msg, icon: 'none' })
+        }
+        return
+      }
+
       uni.showLoading({ title: '正在调起支付...' })
-      
+
       // 1. 检查登录状态
       const token = uni.getStorageSync('token')
       if (!token) {

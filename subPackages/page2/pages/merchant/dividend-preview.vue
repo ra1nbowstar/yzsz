@@ -39,10 +39,10 @@
             <text class="action-label">积分值</text>
             <view class="input-wrapper">
               <input 
-                v-model.number="pointsValueInput" 
-                type="digit"
+                v-model="pointsValueInput" 
+                type="number"
                 class="value-input"
-                placeholder="0.0000"
+                placeholder="0.00"
                 :maxlength="6"
               />
               <text class="input-unit">%</text>

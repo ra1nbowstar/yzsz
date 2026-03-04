@@ -101,6 +101,10 @@
         <text class="func-icon iconfont icon-shanghuliushui"></text>
         <text class="func-text">商户号管理</text>
       </view>
+	  <view class="func-card" @tap="goToPage('/subPackages/page2/pages/merchant/create_platform_payment')">
+	    <text class="func-icon iconfont icon-hongbao" style="color: #ff8f00;"></text>
+	    <text class="func-text">平台收款</text>
+	  </view>
     </view>
 
 
