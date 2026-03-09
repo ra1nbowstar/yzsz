@@ -41,6 +41,12 @@
 			"style": {
 				"navigationBarTitleText": "订单支付"
 			}
+		},
+		{
+			"path": "pages/offline/permanentPay",
+			"style": {
+				"navigationBarTitleText": "输入金额"
+			}
 		}
 	],
 	"subPackages": [
@@ -566,6 +572,24 @@
 						"navigationBarTitleText": "线下收银"
 					}
 				},
+				{
+					"path": "pages/merchant/permanent-collection",
+					"style": {
+						"navigationBarTitleText": "永久收款码"
+					}
+				},
+				{
+				          "path": "pages/fund-pool/index",
+				          "style": {
+				            "navigationBarTitleText": "我的资金"
+				          }
+				        },
+				{
+				          "path": "pages/fund-pool/records",
+				          "style": {
+				            "navigationBarTitleText": "转化记录"
+				          }
+				        },
 				{
 				          "path": "pages/merchant/create_platform_payment",
 				          "style": {

@@ -116,6 +116,23 @@ export const getOfflineOrderDetail = (order_no, user_id) => {
 }
 
 /**
+ * 生成商户永久收款码
+ * POST /api/offline/permanent-qrcode?merchant_id=xxx
+ * @param {Number} merchant_id 商家ID（必填）
+ * @returns {Promise} 成功返回字符串（一般为 base64 图片或图片 URL）
+ */
+export const getPermanentCollectionQrcode = (merchant_id) => {
+  if (merchant_id == null || merchant_id === '') {
+    return Promise.reject(new Error('商家ID不能为空'))
+  }
+  const mid = Number(merchant_id)
+  if (isNaN(mid)) {
+    return Promise.reject(new Error('商家ID必须为数字'))
+  }
+  return request.post(`/api/offline/permanent-qrcode?merchant_id=${encodeURIComponent(mid)}`)
+}
+
+/**
  * 线下收银统一下单（支持优惠券）
  * POST /api/offline/zhifu/tongyi?order_no=xxx&coupon_id=yyy
  * 请求体带 openid、user_id、total_fee(分)，后端需把 total_fee 传给微信统一下单

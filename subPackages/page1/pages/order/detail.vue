@@ -603,118 +603,126 @@ const loadOrderDetail = async (orderNumber) => {
 		}
 		
 		// 如果订单在待收货或已完成状态，加载物流信息（图2：POST /logistics/query 或 getLogistics）
-		let logisticsDataFromApi = null
-		if (order.value.status === 'pending_recv' || order.value.status === 'completed') {
-			const trackingNo = order.value.logisticsNo || order.value.tracking_number || order.value.trackingNumber
-			const companyCode = order.value.logisticsCompanyCode || order.value.company_code || order.value.express_company
-			try {
-				if (trackingNo) {
-					// 有单号时优先用 POST /logistics/query 查询物流（图2）
-					const logisticsRes = await queryLogistics({ tracking_number: trackingNo, company_code: companyCode || 'auto' })
-					logisticsDataFromApi = logisticsRes.data || logisticsRes
-				}
-				if (!logisticsDataFromApi && order.value.id) {
-					const logisticsRes = await getLogistics(order.value.id)
-					logisticsDataFromApi = logisticsRes.data || logisticsRes
-				}
-				if (logisticsDataFromApi) {
-					// 快递100返回的数据格式：
-					// { message: "ok", nu: "单号", com: "公司编码", state: "状态", data: [...] }
-					
-					// 提取快递公司（com字段是公司编码，需要转换为公司名称）
-					const companyCode = logisticsDataFromApi.com || logisticsDataFromApi.company_code
-					if (companyCode) {
-						// 可以保留编码，或者转换为公司名称
-						order.value.logistics = logisticsDataFromApi.company || logisticsDataFromApi.company_name || logisticsDataFromApi.logistics_company || companyCode || order.value.logistics
-					} else {
-						order.value.logistics = logisticsDataFromApi.company || logisticsDataFromApi.company_name || logisticsDataFromApi.logistics_company || order.value.logistics
-					}
-					
-					// 提取快递单号（nu字段）
-					order.value.logisticsNo = logisticsDataFromApi.nu || logisticsDataFromApi.tracking_number || logisticsDataFromApi.trackingNumber || logisticsDataFromApi.number || order.value.logisticsNo
-					
-					// 提取物流状态（state字段：0在途，1揽收，2疑难，3签收；或 status/statusText 已签收）
-					const state = logisticsDataFromApi.state
-					const statusText = (logisticsDataFromApi.status || logisticsDataFromApi.statusText || logisticsDataFromApi.state_text || '').toString()
-					const isSigned = state === '3' || state === 3 || /已签收|签收|妥投/i.test(statusText)
-					if (isSigned) {
-						order.value.logisticsStatus = '已签收'
-						// 当物流显示已签收时发送确认收货提醒（POST /merchant/notify-confirm-receive，每个订单只能调用一次）
-						// 仅在此处触发：用户打开本详情页且物流接口返回已签收。若需在用户未打开详情时也发提醒，需后端在物流回调解到已签收时主动调该接口。
-						const orderNo = order.value.orderNo || order.value.order_number || String(order.value.id)
-						const sentKey = 'notifyConfirmReceiveSent_' + orderNo
-						if (orderNo && !uni.getStorageSync(sentKey)) {
-							notifyConfirmReceive(orderNo).then(() => {
-								uni.setStorageSync(sentKey, '1')
-							}).catch(() => {})
-						}
-					} else if (state === '1' || state === 1) {
-						order.value.logisticsStatus = '已揽收'
-					} else if (state === '2' || state === 2) {
-						order.value.logisticsStatus = '疑难件'
-					} else {
-						order.value.logisticsStatus = '运输中'
-					}
-					
-					// 处理物流轨迹（快递100的data字段是数组，倒序排列，最新的在第一个）
-					const tracesData = logisticsDataFromApi.data || logisticsDataFromApi.traces || logisticsDataFromApi.trace || logisticsDataFromApi.logistics_traces || []
-					if (Array.isArray(tracesData) && tracesData.length > 0) {
-						// 转换快递100的数据格式为统一格式
-						// 注意：实际数据可能只有 time, ftime, context 字段
-						order.value.logisticsTraces = tracesData.map(trace => ({
-							desc: trace.context || trace.desc || trace.description || trace.remark || '',
-							time: trace.ftime || trace.time || trace.datetime || trace.accept_time || '',
-							// 以下字段可能不存在，但保留兼容性
-							areaCode: trace.areaCode || trace.area_code || '',
-							areaName: trace.areaName || trace.area_name || '',
-							status: trace.status || trace.statusCode || '',
-							statusCode: trace.statusCode || trace.status_code || ''
-						}))
-						
-						// 如果有轨迹，使用最新轨迹的时间作为物流时间
-						if (order.value.logisticsTraces.length > 0) {
-							order.value.logisticsTime = order.value.logisticsTraces[0].time || order.value.logisticsTime
-							// 始终使用最新轨迹的描述作为物流详情，确保与物流状态一致
-							const latestTraceDesc = order.value.logisticsTraces[0].desc || ''
-							if (latestTraceDesc) {
-								order.value.logistics = latestTraceDesc
-							} else if (!order.value.logistics || order.value.logistics === '') {
-								// 如果没有轨迹描述，根据物流状态设置默认描述
-								if (order.value.logisticsStatus === '已签收') {
-									order.value.logistics = '包裹已签收'
-								} else if (order.value.logisticsStatus === '已揽收') {
-									order.value.logistics = '包裹已揽收'
-								} else {
-									order.value.logistics = '包裹正在运输中'
-								}
-							}
-						}
-					} else {
-						order.value.logisticsTraces = []
-						// 如果没有轨迹数据，根据物流状态设置描述
-						if (order.value.logisticsStatus === '已签收') {
-							order.value.logistics = '包裹已签收'
-						} else if (order.value.logisticsStatus === '已揽收') {
-							order.value.logistics = '包裹已揽收'
-						} else if (!order.value.logistics || order.value.logistics === '') {
-							order.value.logistics = '包裹正在运输中'
-						}
-					}
-					
-					console.log('[订单详情] 获取到物流数据（快递100格式）:', {
-						message: logisticsDataFromApi.message,
-						nu: logisticsDataFromApi.nu,
-						com: logisticsDataFromApi.com,
-						state: logisticsDataFromApi.state,
-						ischeck: logisticsDataFromApi.ischeck,
-						tracesCount: order.value.logisticsTraces.length,
-						logisticsStatus: order.value.logisticsStatus
-					})
-				}
-			} catch (err) {
-				console.error('获取物流信息失败', err)
-			}
-		}
+		// 如果订单在待收货或已完成状态，加载物流信息
+let logisticsDataFromApi = null
+if (order.value.status === 'pending_recv' || order.value.status === 'completed') {
+    const trackingNo = order.value.logisticsNo || order.value.tracking_number || order.value.trackingNumber
+    const companyCode = order.value.logisticsCompanyCode || order.value.company_code || order.value.express_company
+    // 仅当有运单号时才尝试查询物流
+    if (trackingNo) {
+        try {
+            const logisticsRes = await queryLogistics({ tracking_number: trackingNo, company_code: companyCode || 'auto' })
+            logisticsDataFromApi = logisticsRes.data || logisticsRes
+        } catch (err) {
+            console.error('获取物流信息失败', err)
+        }
+    }
+    if (logisticsDataFromApi) {
+        // 快递100返回的数据格式：
+        // { message: "ok", nu: "单号", com: "公司编码", state: "状态", data: [...] }
+        
+        // 提取快递公司（com字段是公司编码，需要转换为公司名称）
+        const companyCode = logisticsDataFromApi.com || logisticsDataFromApi.company_code
+        if (companyCode) {
+            // 可以保留编码，或者转换为公司名称
+            order.value.logistics = logisticsDataFromApi.company || logisticsDataFromApi.company_name || logisticsDataFromApi.logistics_company || companyCode || order.value.logistics
+        } else {
+            order.value.logistics = logisticsDataFromApi.company || logisticsDataFromApi.company_name || logisticsDataFromApi.logistics_company || order.value.logistics
+        }
+        
+        // 提取快递单号（nu字段）
+        order.value.logisticsNo = logisticsDataFromApi.nu || logisticsDataFromApi.tracking_number || logisticsDataFromApi.trackingNumber || logisticsDataFromApi.number || order.value.logisticsNo
+        
+        // 提取物流状态（state字段：0在途，1揽收，2疑难，3签收；或 status/statusText 已签收）
+        const state = logisticsDataFromApi.state
+        const statusText = (logisticsDataFromApi.status || logisticsDataFromApi.statusText || logisticsDataFromApi.state_text || '').toString()
+        const isSigned = state === '3' || state === 3 || /已签收|签收|妥投/i.test(statusText)
+        if (isSigned) {
+            order.value.logisticsStatus = '已签收'
+            // 当物流显示已签收时发送确认收货提醒（POST /merchant/notify-confirm-receive，每个订单只能调用一次）
+            // 仅在此处触发：用户打开本详情页且物流接口返回已签收。若需在用户未打开详情时也发提醒，需后端在物流回调解到已签收时主动调该接口。
+            const orderNo = order.value.orderNo || order.value.order_number || String(order.value.id)
+            const sentKey = 'notifyConfirmReceiveSent_' + orderNo
+            if (orderNo && !uni.getStorageSync(sentKey)) {
+                notifyConfirmReceive(orderNo).then(() => {
+                    uni.setStorageSync(sentKey, '1')
+                }).catch(() => {})
+            }
+        } else if (state === '1' || state === 1) {
+            order.value.logisticsStatus = '已揽收'
+        } else if (state === '2' || state === 2) {
+            order.value.logisticsStatus = '疑难件'
+        } else {
+            order.value.logisticsStatus = '运输中'
+        }
+        
+        // 处理物流轨迹（快递100的data字段是数组，倒序排列，最新的在第一个）
+        const tracesData = logisticsDataFromApi.data || logisticsDataFromApi.traces || logisticsDataFromApi.trace || logisticsDataFromApi.logistics_traces || []
+        if (Array.isArray(tracesData) && tracesData.length > 0) {
+            // 转换快递100的数据格式为统一格式
+            // 注意：实际数据可能只有 time, ftime, context 字段
+            order.value.logisticsTraces = tracesData.map(trace => ({
+                desc: trace.context || trace.desc || trace.description || trace.remark || '',
+                time: trace.ftime || trace.time || trace.datetime || trace.accept_time || '',
+                // 以下字段可能不存在，但保留兼容性
+                areaCode: trace.areaCode || trace.area_code || '',
+                areaName: trace.areaName || trace.area_name || '',
+                status: trace.status || trace.statusCode || '',
+                statusCode: trace.statusCode || trace.status_code || ''
+            }))
+            
+            // 如果有轨迹，使用最新轨迹的时间作为物流时间
+            if (order.value.logisticsTraces.length > 0) {
+                order.value.logisticsTime = order.value.logisticsTraces[0].time || order.value.logisticsTime
+                // 始终使用最新轨迹的描述作为物流详情，确保与物流状态一致
+                const latestTraceDesc = order.value.logisticsTraces[0].desc || ''
+                if (latestTraceDesc) {
+                    order.value.logistics = latestTraceDesc
+                } else if (!order.value.logistics || order.value.logistics === '') {
+                    // 如果没有轨迹描述，根据物流状态设置默认描述
+                    if (order.value.logisticsStatus === '已签收') {
+                        order.value.logistics = '包裹已签收'
+                    } else if (order.value.logisticsStatus === '已揽收') {
+                        order.value.logistics = '包裹已揽收'
+                    } else {
+                        order.value.logistics = '包裹正在运输中'
+                    }
+                }
+            }
+        } else {
+            order.value.logisticsTraces = []
+            // 如果没有轨迹数据，根据物流状态设置描述
+            if (order.value.logisticsStatus === '已签收') {
+                order.value.logistics = '包裹已签收'
+            } else if (order.value.logisticsStatus === '已揽收') {
+                order.value.logistics = '包裹已揽收'
+            } else if (!order.value.logistics || order.value.logistics === '') {
+                order.value.logistics = '包裹正在运输中'
+            }
+        }
+        
+        console.log('[订单详情] 获取到物流数据（快递100格式）:', {
+            message: logisticsDataFromApi.message,
+            nu: logisticsDataFromApi.nu,
+            com: logisticsDataFromApi.com,
+            state: logisticsDataFromApi.state,
+            ischeck: logisticsDataFromApi.ischeck,
+            tracesCount: order.value.logisticsTraces.length,
+            logisticsStatus: order.value.logisticsStatus
+        })
+    } else {
+        // 没有物流数据时，设置默认状态
+        order.value.logisticsTraces = []
+        if (order.value.status === 'pending_recv') {
+            order.value.logisticsStatus = '运输中'
+            order.value.logistics = '包裹正在运输中'
+        } else if (order.value.status === 'completed') {
+            order.value.logisticsStatus = '已签收'
+            order.value.logistics = '包裹已签收'
+        }
+    }
+}
+			
 
 	} catch (error) {
 		uni.hideLoading()
@@ -859,9 +867,9 @@ const handleReceive = () => {
 	// 统一流程：先调起微信确认收货组件（须传 transaction_id 或 merchant_id+merchant_trade_no），用户确认后由 App.onShow 回调里调用 confirm-receive
 	// #ifdef MP-WEIXIN
 	const wxEnv = typeof wx !== 'undefined' ? wx : null
-	const transactionId = (order.value.transaction_id || order.value.transactionId || '').trim()
-	const merchantId = (order.value.merchant_id || order.value.mch_id || config.wechatMerchantId || uni.getStorageSync('wechat_merchant_id') || '').trim()
-	const merchantTradeNo = (order.value.orderNo || '').trim()
+	const transactionId = String(order.value.transaction_id || order.value.transactionId || '').trim()
+	const merchantId = String(order.value.merchant_id || order.value.mch_id || config.wechatMerchantId || uni.getStorageSync('wechat_merchant_id') || '').trim()
+	const merchantTradeNo = String(order.value.orderNo || '').trim()
 	const canOpenComponent = transactionId || (merchantId && merchantTradeNo)
 	if (wxEnv && wxEnv.openBusinessView && canOpenComponent) {
 		const extraData = {
@@ -1418,8 +1426,14 @@ onShow(() => {
 			const p = JSON.parse(raw)
 			if (p && p.orderNo && (Date.now() - (p.at || 0)) < 120000) {
 				const doSync = (isRetry) => {
-					console.log('[订单详情] onShow 兜底：调后端确认收货', p.orderNo, isRetry ? '(重试)' : '')
-					confirmReceive({ order_number: p.orderNo, transaction_id: p.transactionId || undefined }).then(() => {
+				    console.log('[订单详情] onShow 兜底：调后端确认收货', p.orderNo, isRetry ? '(重试)' : '')
+				    // 新增：如果没有 transactionId，则无法同步，清除记录并返回
+				    if (!p.transactionId) {
+				        console.warn('[订单详情] transactionId 为空，无法同步确认收货，清除记录')
+				        uni.removeStorageSync('pending_confirm_receive')
+				        return
+				    }
+				    confirmReceive({ order_number: p.orderNo, transaction_id: p.transactionId || undefined }).then(() => {
 						uni.removeStorageSync('pending_confirm_receive')
 						uni.showToast({ title: '收货已同步', icon: 'success' })
 						if (currentOrderNumber) loadOrderDetail(currentOrderNumber)

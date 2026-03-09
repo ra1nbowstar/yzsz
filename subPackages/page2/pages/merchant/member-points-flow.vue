@@ -532,7 +532,7 @@ onLoad((options) => {
   padding: 30rpx;
   margin-bottom: 20rpx;
 }
-
+/* 修改 .flow-header */
 .flow-header {
   display: flex;
   justify-content: space-between;
@@ -540,13 +540,17 @@ onLoad((options) => {
   margin-bottom: 20rpx;
   padding-bottom: 20rpx;
   border-bottom: 1rpx solid #f0f0f0;
+  gap: 20rpx; /* 添加间距 */
 }
 
+/* 修改 .flow-left */
 .flow-left {
   display: flex;
   flex-direction: column;
   gap: 8rpx;
   flex: 1;
+  min-width: 0; /* 关键：允许flex子项收缩 */
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 .flow-type {
@@ -556,6 +560,10 @@ onLoad((options) => {
   border-radius: 6rpx;
   display: inline-block;
   width: fit-content;
+  max-width: 100%; /* 限制最大宽度 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .flow-type.type-income {
@@ -583,14 +591,19 @@ onLoad((options) => {
   color: #666;
 }
 
+/* 修改 .flow-right */
 .flow-right {
   display: flex;
   align-items: center;
+  flex-shrink: 0; /* 关键：防止被压缩 */
+  min-width: fit-content; /* 根据内容自适应宽度 */
 }
 
+/* 修改 .flow-amount（第323行） */
 .flow-amount {
   font-size: 32rpx;
   font-weight: bold;
+  white-space: nowrap; /* 防止金额换行 */
 }
 
 .flow-amount.amount-income {

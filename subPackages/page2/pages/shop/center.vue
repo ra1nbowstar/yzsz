@@ -28,13 +28,21 @@
       </view>
     </view>
 
-    <!-- 快捷功能：支付单单独一行加大，其余网格 -->
+    <!-- 快捷功能：支付单、永久收款码单独一行，其余网格 -->
     <view class="quick-actions-wrap">
       <view class="action-featured" @tap.stop="goToCreatePayment">
         <view class="action-featured-icon iconfont icon-hongbao"></view>
         <view class="action-featured-right">
           <text class="action-featured-title">支付单</text>
           <text class="action-featured-desc">创建收款码、线下收款</text>
+        </view>
+        <text class="action-featured-arrow">›</text>
+      </view>
+      <view class="action-featured" @tap.stop="goToPermanentCollection">
+        <view class="action-featured-icon iconfont icon-hongbao" style="background: #e8f8f0; color: #07c160;"></view>
+        <view class="action-featured-right">
+          <text class="action-featured-title">永久收款码</text>
+          <text class="action-featured-desc">长期有效、可打印、保存图片</text>
         </view>
         <text class="action-featured-arrow">›</text>
       </view>
@@ -175,6 +183,8 @@ const goToPage = (url) => {
 
 /** 支付单：创建收款码页 */
 const goToCreatePayment = () => goToPage('/subPackages/page2/pages/merchant/create_payment')
+/** 永久收款码 */
+const goToPermanentCollection = () => goToPage('/subPackages/page2/pages/merchant/permanent-collection')
 /** 商家认证：实名认证页 */
 const goToCertification = () => goToPage('/subPackages/page2/pages/merchant/certification')
 

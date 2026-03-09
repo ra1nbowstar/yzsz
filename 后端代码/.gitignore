@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+.vscode/
+.idea/
+build/
+dist/
+wheels/
+logs/
+*.egg-info
+*.log
+*.xml
+*.iml
+*.service
+# Virtual environments
+.venv
+.env
+certs
+pic_data/
+json_data/
+user_pic/
+uploads/
+临时文件夹
+数据库表结构优化建议.md
+项目分析与优化建议.md
+接口测试XMind导图说明.md
+assets/
+*.pem

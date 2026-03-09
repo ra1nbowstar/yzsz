@@ -222,21 +222,21 @@
 			</view>
 		</view>
 
-		<!-- 提交订单按钮 -->
-		<view class="submit-bar">
-		  <view class="total-info">
-		    <text class="total-label">实付</text>
-		    <text class="total-price">¥{{ formatAmount(actualAmount) }}</text>
-		    <text v-if="isFreeOrder" class="free-tag">免费订单</text>
-		  </view>
-		  <button 
-		    class="submit-btn" 
-		    :class="{ 'btn-free': isFreeOrder }"
-		    @click="submitOrder"
-		  >
-		    {{ isFreeOrder ? '免费领取' : '提交订单' }}
-		  </button>
-		</view>
+	    <!-- 提交订单按钮 -->
+	    <view class="submit-bar">
+	      <view class="total-info">
+	        <text class="total-label">实付</text>
+	        <text class="total-price">¥{{ formatAmount(actualAmount) }}</text>
+	        <!-- 删除免费订单标签 -->
+	      </view>
+	      <button 
+	        class="submit-btn" 
+	        :class="{ 'btn-free': isFreeOrder }"
+	        @click="submitOrder"
+	      >
+	        {{ isFreeOrder ? '免费领取' : '提交订单' }}
+	      </button>
+	    </view>
 	</view>
 </template>
 
@@ -683,7 +683,7 @@ const submitFreeOrder = async () => {
 				buy_now: true,
 				buy_now_items: buyNowItems,
 				delivery_way: deliveryWay.value || 'platform',
-				pointsUsed: pointsToUse.value,
+				points_to_use: pointsToUse.value,
 				pointsDiscount: pointsDiscount.value,
 				coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null,
 				couponDiscount: couponDiscount.value,
@@ -697,7 +697,7 @@ const submitFreeOrder = async () => {
 				custom_address: customAddress,
 				delivery_way: deliveryWay.value || 'platform',
 				coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null,
-				pointsUsed: pointsToUse.value,
+				points_to_use: pointsToUse.value,
 				pointsDiscount: pointsDiscount.value,
 				actualAmount: 0,
 				is_free_order: true
@@ -714,41 +714,9 @@ const submitFreeOrder = async () => {
 		const apiOrderNo = orderData.orderNo || orderData.order_number || orderData.order_no
 		const apiOrderId = orderData.id || orderData.orderId || orderData.order_id
 		
-		// 扣除积分（如果有使用）
-		if (pointsToUse.value > 0) {
-			try {
-				const pointsToDeduct = roundTo4(pointsToUse.value)
-				console.log('[免费订单] 扣除积分:', pointsToDeduct)
-				await updatePointsWithAutoMobile({
-					type: 'member',
-					amount: -pointsToDeduct,
-					reason: `免费订单${apiOrderNo || 'FREE'}积分抵扣`
-				})
-				userPoints.value = roundTo4(Math.max(0, userPoints.value - pointsToDeduct))
-				const userInfo = uni.getStorageSync('userInfo') || {}
-				if (userInfo.points !== undefined) {
-					userInfo.points = roundTo4(Math.max(0, userInfo.points - pointsToDeduct))
-					uni.setStorageSync('userInfo', userInfo)
-				}
-			} catch (pointsError) {
-				console.error('[免费订单] 积分扣除失败:', pointsError)
-			}
-		}
 		
-		// 核销优惠券（如果有使用）
-		if (selectedCoupon.value) {
-		    try {
-		        console.log('[免费订单] 开始核销优惠券:', selectedCoupon.value.id)
-		        await useCoupon({ 
-		            coupon_id: selectedCoupon.value.id,
-		            user_id: finalUserId
-		        })
-		        console.log('[免费订单] 优惠券核销成功')
-		    } catch (couponError) {
-		        console.error('[免费订单] 优惠券核销失败:', couponError)
-		        uni.showToast({ title: '优惠券核销失败，请联系客服', icon: 'none' })
-		    }
-		}
+		
+
 		
 		// 统一订单号（必有其一）：优先使用后端返回的 order_number
 		const finalOrderNo = apiOrderNo || `FREE${Date.now()}`
@@ -854,9 +822,11 @@ const earnPoints = computed(() => {
 	return Math.floor(actualAmount.value)
 })
 
-// 公益贡献金额：按商品金额的 1%（非实付金额）
+// 公益贡献金额：按去掉积分抵扣后的实际支付金额的 1%
 const charityAmount = computed(() => {
-	return calculateCharityAmount(productTotal.value)
+	// 积分抵扣后的实际支付金额 × 1%
+	const baseAmount = Math.max(0, actualAmount.value)
+	return calculateCharityAmount(baseAmount)
 })
 
 // 积分输入处理
@@ -1173,7 +1143,7 @@ const submitOrder = async () => {  // ← 添加 async
 		productTotal: productTotal.value,
 		deliveryFee: deliveryFee.value,
 		originalAmount: originalAmount.value,
-		pointsUsed: pointsToUse.value,
+		points_to_use: pointsToUse.value,
 		pointsDiscount: pointsDiscount.value,
 		couponDiscount: couponDiscount.value,
 		coupon: selectedCoupon.value,  // 添加优惠券信息，用于支付成功后调用使用接口
@@ -1388,7 +1358,7 @@ const submitOrder = async () => {  // ← 添加 async
 			productTotal: productTotal.value,
 			deliveryFee: deliveryFee.value,
 			originalAmount: originalAmount.value,
-			pointsUsed: pointsToUse.value,
+			points_to_use: pointsToUse.value,
 			pointsDiscount: pointsDiscount.value,
 			coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null,
 			couponDiscount: couponDiscount.value,
@@ -1405,7 +1375,7 @@ const submitOrder = async () => {  // ← 添加 async
 			custom_address: customAddress,
 			delivery_way: deliveryWay.value, // 配送方式：'platform' 或 'pickup'
 			coupon_id: selectedCoupon.value ? selectedCoupon.value.id : null,
-			pointsUsed: pointsToUse.value,
+			points_to_use: pointsToUse.value,
 			pointsDiscount: pointsDiscount.value,
 			actualAmount: actualAmount.value
 		}
@@ -1450,29 +1420,7 @@ const submitOrder = async () => {  // ← 添加 async
 				amount: paymentData.amount
 			})
 			
-			// 注意：优惠券使用已移到支付成功后处理（pages/payment/payment.vue的handlePaymentSuccess函数）
-			// 积分扣减：后端无扣减接口，由前端在订单创建成功后调用 updatePointsWithAutoMobile 扣减
-			if (pointsToUse.value > 0) {
-				try {
-					const pointsToDeduct = roundTo4(pointsToUse.value)
-					console.log('[积分扣除] 订单创建成功，开始扣除积分:', pointsToDeduct)
-					await updatePointsWithAutoMobile({
-						type: 'member',
-						amount: -pointsToDeduct,
-						reason: `订单${paymentData.orderNo}积分抵扣`
-					})
-					console.log('[积分扣除] 积分扣除成功')
-					userPoints.value = roundTo4(Math.max(0, userPoints.value - pointsToDeduct))
-					const userInfo = uni.getStorageSync('userInfo') || {}
-					if (userInfo.points !== undefined) {
-						userInfo.points = roundTo4(Math.max(0, userInfo.points - pointsToDeduct))
-						uni.setStorageSync('userInfo', userInfo)
-					}
-				} catch (pointsError) {
-					console.error('[积分扣除] 积分扣除失败:', pointsError)
-					uni.showToast({ title: '积分扣除失败，请稍后重试', icon: 'none', duration: 2000 })
-				}
-			}
+			
 			
 			uni.hideLoading()
 			

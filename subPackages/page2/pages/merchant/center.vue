@@ -105,6 +105,14 @@
 	    <text class="func-icon iconfont icon-hongbao" style="color: #ff8f00;"></text>
 	    <text class="func-text">平台收款</text>
 	  </view>
+      <view class="func-card" @tap="goToPage('/subPackages/page2/pages/merchant/permanent-collection')">
+        <text class="func-icon iconfont icon-hongbao" style="color: #07c160;"></text>
+        <text class="func-text">永久收款码</text>
+      </view>
+	  <view class="func-card" @tap="goToPage('/subPackages/page2/pages/fund-pool/index')">
+	    <text class="func-icon iconfont icon-qianbao" style="color: #ff6b00;"></text>
+	    <text class="func-text">我的资金</text>
+	  </view>
     </view>
 
 

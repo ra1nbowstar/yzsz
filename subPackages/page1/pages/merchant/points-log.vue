@@ -65,7 +65,7 @@
               <view class="log-info">
                 <text class="log-reason">{{ log.reason }}</text>
                 <text class="log-time">{{ log.createdAt }}</text>
-                <text v-if="log.relatedOrder" class="log-order">订单号：{{ log.relatedOrder }}</text>
+                <text v-if="log.relatedOrder" class="log-order">订单：{{ String(log.relatedOrder).slice(-8) }}</text>
               </view>
             </view>
             <view class="log-right">
@@ -502,6 +502,7 @@ onShow(() => {
   padding: 24rpx;
   background: #f8f9fa;
   border-radius: 12rpx;
+  gap: 20rpx; /* 添加间距 */
 }
 
 .log-left {
@@ -509,6 +510,8 @@ onShow(() => {
   align-items: center;
   gap: 20rpx;
   flex: 1;
+  min-width: 0; /* 关键：允许flex子项收缩 */
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 .log-icon {
@@ -521,31 +524,47 @@ onShow(() => {
   flex-direction: column;
   gap: 8rpx;
   flex: 1;
+  min-width: 0; /* 关键：允许flex子项收缩 */
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 .log-reason {
   font-size: 28rpx;
   color: #333;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .log-time {
   font-size: 24rpx;
   color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .log-order {
   font-size: 22rpx;
   color: #667eea;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .log-right {
   flex-shrink: 0;
+  min-width: fit-content; /* 根据内容自适应宽度 */
 }
 
 .log-amount {
   font-size: 32rpx;
   font-weight: bold;
+  white-space: nowrap; /* 防止金额换行 */
 }
 
 .log-amount.income {

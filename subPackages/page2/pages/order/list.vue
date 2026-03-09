@@ -499,7 +499,7 @@ const handleReceive = async (order) => {
 	// #ifdef MP-WEIXIN
 	const wxEnv = typeof wx !== 'undefined' ? wx : null
 	const transactionId = (order.transaction_id || order.transactionId || '').trim()
-	const merchantId = (order.merchant_id || order.mch_id || config.wechatMerchantId || uni.getStorageSync('wechat_merchant_id') || '').trim()
+	const merchantId = String(order.merchant_id || order.mch_id || config.wechatMerchantId || uni.getStorageSync('wechat_merchant_id') || '').trim()
 	const merchantTradeNo = (order.orderNo || '').trim()
 	const canOpenComponent = !!(transactionId || (merchantId && merchantTradeNo))
 	const hasOpenBusinessView = !!(wxEnv && wxEnv.openBusinessView)
@@ -1106,13 +1106,24 @@ onShow(() => {
 			if (p && p.orderNo && (Date.now() - (p.at || 0)) < 120000) {
 				// 延迟 3s 再调后端，给微信侧更新订单状态的时间；若仍报「未知状态」则自动再等 3s 重试一次
 				const doSync = (isRetry) => {
-					console.log('[订单列表] onShow 兜底：调后端确认收货', p.orderNo, isRetry ? '(重试)' : '')
-					confirmReceive({ order_number: p.orderNo, transaction_id: p.transactionId || undefined }).then(() => {
-						uni.removeStorageSync('pending_confirm_receive')
-						uni.showToast({ title: '收货已同步', icon: 'success' })
-						switchTab('completed')
-						loadOrderList()
-					}).catch((err) => {
+				    console.log('[订单列表] onShow 兜底：调后端确认收货', p.orderNo, isRetry ? '(重试)' : '')
+				    
+				    // 新增：如果没有 transactionId，则无法同步，清除记录并返回
+				    if (!p.transactionId) {
+				        console.warn('[订单列表] transactionId 为空，无法同步确认收货，清除记录')
+				        uni.removeStorageSync('pending_confirm_receive')
+				        return
+				    }
+				
+				    confirmReceive({ 
+				        order_number: p.orderNo, 
+				        transaction_id: p.transactionId 
+				    }).then(() => {
+				        uni.removeStorageSync('pending_confirm_receive')
+				        uni.showToast({ title: '收货已同步', icon: 'success' })
+				        switchTab('completed')
+				        loadOrderList()
+				    }).catch((err) => {
 						console.warn('[订单列表] onShow 兜底确认收货失败', err)
 						const msg = err && (err.message || err.msg || err.errorMsg) || ''
 						const isUnknownState = /未知状态|None|未确认收货/i.test(msg)

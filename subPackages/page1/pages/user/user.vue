@@ -74,6 +74,10 @@
 					<text class="iconfont icon-hongbao order-icon"></text>
 					<text class="order-text">创建支付单</text>
 				</view>
+				<view class="order-item" @tap="goToPage('/page2/merchant/permanent-collection')">
+					<text class="iconfont icon-hongbao order-icon"></text>
+					<text class="order-text">永久收款码</text>
+				</view>
 			</view>
 		</view>
 
@@ -110,6 +114,15 @@
 				<view class="menu-left">
 					<text class="menu-icon iconfont icon-shangjiarenzheng"></text>
 					<text class="menu-text">创建支付单</text>
+				</view>
+				<view class="menu-right">
+					<text class="menu-arrow">›</text>
+				</view>
+			</view>
+			<view class="menu-item" @tap="goToPage('/page2/merchant/permanent-collection')">
+				<view class="menu-left">
+					<text class="menu-icon iconfont icon-hongbao"></text>
+					<text class="menu-text">永久收款码</text>
 				</view>
 				<view class="menu-right">
 					<text class="menu-arrow">›</text>

@@ -45,9 +45,11 @@
       <view class="info-content">
         <view class="info-row">
           <text class="info-label">订单号</text>
-          <text class="info-value">{{ order.orderNo }}</text>
-          <view class="action-btn" @tap="copyOrderNo">
-            <text class="btn-text">复制</text>
+          <view class="order-number-box">
+            <text class="order-number-text">{{ order.orderNo }}</text>
+            <view class="action-btn copy-btn" @tap="copyOrderNo">
+              <text class="btn-text">复制</text>
+            </view>
           </view>
         </view>
         <view class="info-row">
@@ -135,9 +137,11 @@
         </view>
         <view class="logistics-row">
           <text class="logistics-label">运单号</text>
-          <text class="logistics-value">{{ order.logistics.trackingNo }}</text>
-          <view class="action-btn" @tap="copyTrackingNo">
-            <text class="btn-text">复制</text>
+          <view class="order-number-box">
+            <text class="order-number-text">{{ order.logistics.trackingNo }}</text>
+            <view class="action-btn copy-btn" @tap="copyTrackingNo">
+              <text class="btn-text">复制</text>
+            </view>
           </view>
         </view>
         <view v-if="order.logistics.status" class="logistics-row">
@@ -1638,6 +1642,35 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.order-number-box {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  margin-left: 20rpx;
+  justify-content: flex-end;
+  min-width: 0;  /* 添加这行 */
+  overflow: hidden;  /* 添加这行 */
+}
+
+.order-number-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 24rpx;  /* 改小一点，从 28rpx 改为 24rpx */
+  color: #666;  /* 颜色淡一点 */
+  text-align: right;
+  margin-right: 16rpx;  /* 减小间距 */
+  min-width: 0;  /* 添加这行 */
+}
+
+.copy-btn {
+  flex-shrink: 0;
+  margin-left: 0 !important;  /* 强制覆盖 .action-btn 的 margin */
+  padding: 6rpx 16rpx;  /* 稍微减小 padding */
+  font-size: 22rpx;  /* 稍微减小字体 */
 }
 
 .info-row.address-row {
