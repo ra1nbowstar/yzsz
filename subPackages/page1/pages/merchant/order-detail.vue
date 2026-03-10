@@ -877,9 +877,7 @@ const confirmShip = async () => {
   }
 }
 
-/**
- * 确认送达（与平台模式一致：优先调起微信确认收货组件，用户确认后由 App.onShow 调 confirmReceive；无法调起时直接调后端）
- */
+/** 确认送达：弹窗确认后仅调后端确认收货接口，不调起微信官方组件 */
 const completeOrder = () => {
   const orderNumber = order.value.orderNo || order.value.order_number || String(order.value.id)
   if (!orderNumber || orderNumber.trim() === '' || orderNumber === 'undefined' || orderNumber === 'null') {
@@ -894,79 +892,9 @@ const completeOrder = () => {
     confirmColor: '#3d6bff',
     cancelText: '取消',
     success: (res) => {
-      if (res.confirm) handleConfirmReceive()
+      if (res.confirm) doConfirmReceiveApi()
     }
   })
-}
-
-const handleConfirmReceive = () => {
-  // #ifdef MP-WEIXIN
-  const wxEnv = typeof wx !== 'undefined' ? wx : null
-  const transactionId = (order.value.transaction_id || order.value.transactionId || '').trim()
-  const merchantId = (order.value.merchant_id || order.value.mch_id || config.wechatMerchantId || uni.getStorageSync('wechat_merchant_id') || '').trim()
-  const merchantTradeNo = (order.value.orderNo || '').trim()
-  const canOpenComponent = !!(transactionId || (merchantId && merchantTradeNo))
-  const hasOpenBusinessView = !!(wxEnv && wxEnv.openBusinessView)
-
-  if (!hasOpenBusinessView) {
-    uni.showToast({ title: '请升级到最新版微信后重试', icon: 'none' })
-    doConfirmReceiveApi()
-    return
-  }
-  if (!canOpenComponent) {
-    console.warn('[商户订单详情] 无法调起微信组件：缺少 transaction_id 或 (merchant_id + 订单号)，将直接调后端')
-    uni.showToast({ title: '订单信息不完整，正在尝试确认...', icon: 'none', duration: 2000 })
-    doConfirmReceiveApi()
-    return
-  }
-
-  const extraData = {
-    merchant_trade_no: merchantTradeNo,
-    transaction_id: transactionId || undefined
-  }
-  if (merchantId) extraData.merchant_id = String(merchantId)
-  console.log('[商户订单详情] 调起确认收货组件 extraData', extraData)
-  uni.setStorageSync('pending_confirm_receive', JSON.stringify({
-    orderNo: order.value.orderNo,
-    transactionId: order.value.transaction_id || order.value.transactionId || null,
-    at: Date.now()
-  }))
-  wxEnv.openBusinessView({
-    businessType: 'weappOrderConfirm',
-    extraData,
-    success: () => {
-      console.log('[商户订单详情] 已打开微信确认收货组件，等待用户在组件内确认')
-    },
-    fail: (err) => {
-      const errMsg = err && (err.errMsg || err.message || err.errorMessage || JSON.stringify(err))
-      console.warn('[商户订单详情] 打开微信确认收货组件失败', { err, errMsg, extraData })
-      const isDevToolsOnly = /开发者工具|暂不支持此 API|请使用真机/i.test(String(errMsg))
-      if (isDevToolsOnly) {
-        uni.showModal({
-          title: '请在真机上操作',
-          content: '确认收货功能需在真机微信中使用，开发者工具暂不支持。请用手机扫码预览或真机调试后再点击「确认收货」。',
-          showCancel: false,
-          confirmText: '知道了'
-        })
-        return
-      }
-      uni.showModal({
-        title: '无法打开确认收货页',
-        content: '可能原因：① 商家尚未向微信同步该订单的发货信息；② 订单号/商户号与微信侧不一致。请确认商家已发货并同步到微信后，再点击「确认收货」。\n\n微信错误：' + (errMsg || '未知'),
-        showCancel: true,
-        confirmText: '重试',
-        cancelText: '知道了',
-        success: (res) => {
-          if (res.confirm) handleConfirmReceive()
-        }
-      })
-    }
-  })
-  return
-  // #endif
-  // #ifndef MP-WEIXIN
-  doConfirmReceiveApi()
-  // #endif
 }
 
 const doConfirmReceiveApi = async () => {
@@ -1638,6 +1566,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  overflow: hidden;
 }
 
 .info-row.address-row {
@@ -1648,22 +1577,29 @@ onMounted(() => {
   font-size: 28rpx;
   color: #666;
   min-width: 160rpx;
+  flex-shrink: 0;
 }
 
 .info-value {
   flex: 1;
+  min-width: 0;
   font-size: 28rpx;
   color: #333;
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .address-text {
   text-align: left;
   line-height: 1.5;
   margin-left: 20rpx;
+  white-space: normal;
 }
 
 .action-btn {
+  flex-shrink: 0;
   padding: 8rpx 20rpx;
   background: #ff9800;
   color: white;
@@ -1787,6 +1723,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  overflow: hidden;
 }
 
 .logistics-label {
@@ -1797,9 +1734,13 @@ onMounted(() => {
 
 .logistics-value {
   flex: 1;
+  min-width: 0;
   font-size: 28rpx;
   color: #333;
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 备注信息 */

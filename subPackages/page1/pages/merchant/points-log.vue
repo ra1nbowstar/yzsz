@@ -498,22 +498,27 @@ onShow(() => {
 .log-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 24rpx;
   background: #f8f9fa;
   border-radius: 12rpx;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .log-left {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 20rpx;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .log-icon {
   font-size: 36rpx;
   flex-shrink: 0;
+  line-height: 1.2;
 }
 
 .log-info {
@@ -521,31 +526,45 @@ onShow(() => {
   flex-direction: column;
   gap: 8rpx;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .log-reason {
   font-size: 28rpx;
   color: #333;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
 }
 
 .log-time {
   font-size: 24rpx;
   color: #999;
+  flex-shrink: 0;
 }
 
 .log-order {
   font-size: 22rpx;
   color: #667eea;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log-right {
   flex-shrink: 0;
+  margin-left: 16rpx;
 }
 
 .log-amount {
   font-size: 32rpx;
   font-weight: bold;
+  white-space: nowrap;
 }
 
 .log-amount.income {

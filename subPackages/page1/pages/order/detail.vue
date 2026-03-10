@@ -855,65 +855,9 @@ const handlePay = () => {
 	uni.showToast({ title: '跳转支付...', icon: 'loading' })
 }
 
+/** 确认收货（仅调后端接口，不调起微信官方组件） */
 const handleReceive = () => {
-	// 统一流程：先调起微信确认收货组件（须传 transaction_id 或 merchant_id+merchant_trade_no），用户确认后由 App.onShow 回调里调用 confirm-receive
-	// #ifdef MP-WEIXIN
-	const wxEnv = typeof wx !== 'undefined' ? wx : null
-	const transactionId = (order.value.transaction_id || order.value.transactionId || '').trim()
-	const merchantId = (order.value.merchant_id || order.value.mch_id || config.wechatMerchantId || uni.getStorageSync('wechat_merchant_id') || '').trim()
-	const merchantTradeNo = (order.value.orderNo || '').trim()
-	const canOpenComponent = transactionId || (merchantId && merchantTradeNo)
-	if (wxEnv && wxEnv.openBusinessView && canOpenComponent) {
-		const extraData = {
-			merchant_trade_no: merchantTradeNo,
-			transaction_id: transactionId || undefined
-		}
-		if (merchantId) extraData.merchant_id = String(merchantId)
-		console.log('[订单详情] 调起确认收货组件 extraData', extraData)
-		uni.setStorageSync('pending_confirm_receive', JSON.stringify({
-			orderNo: order.value.orderNo,
-			transactionId: order.value.transaction_id || order.value.transactionId || null,
-			at: Date.now()
-		}))
-		wxEnv.openBusinessView({
-			businessType: 'weappOrderConfirm',
-			extraData,
-			success: () => {},
-			fail: (err) => {
-				const errMsg = err && (err.errMsg || err.message || err.errorMessage || JSON.stringify(err))
-				console.warn('[订单详情] 打开微信确认收货组件失败', { err, errMsg, extraData })
-				const isDevToolsOnly = /开发者工具|暂不支持此 API|请使用真机/i.test(String(errMsg))
-				if (isDevToolsOnly) {
-					uni.showModal({
-						title: '请在真机上操作',
-						content: '确认收货功能需在真机微信中使用，开发者工具暂不支持。请用手机扫码预览或真机调试后再点击「确认收货」。',
-						showCancel: false,
-						confirmText: '知道了'
-					})
-					return
-				}
-				uni.showModal({
-					title: '无法打开确认收货页',
-					content: '可能原因：① 商家尚未向微信同步该订单的发货信息；② 订单号/商户号与微信侧不一致。请确认商家已发货并同步到微信后，再点击「确认收货」。\n\n微信错误：' + (errMsg || '未知'),
-					showCancel: true,
-					confirmText: '重试',
-					cancelText: '知道了',
-					success: (res) => {
-						if (res.confirm) handleReceive()
-					}
-				})
-			}
-		})
-	} else {
-		if (!canOpenComponent) {
-			console.warn('[订单详情] 缺少 transaction_id 或 merchant_id，无法调起微信组件，直接调后端')
-		}
-		doConfirmReceive()
-	}
-	// #endif
-	// #ifndef MP-WEIXIN
 	doConfirmReceive()
-	// #endif
 }
 
 /**
