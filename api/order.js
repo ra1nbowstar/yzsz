@@ -260,9 +260,15 @@ export const createOrder = (data) => {
   if (data.coupon_id != null && data.coupon_id !== '') {
     requestData.coupon_id = data.coupon_id
   }
+  // 新方案：前端统一使用 points_to_use 表示使用的积分数量（单位：元）
+  if (data.points_to_use != null) {
+    requestData.points_to_use = data.points_to_use
+  }
+  // 兼容旧字段 pointsUsed（若还有老页面在用）
   if (data.pointsUsed != null) {
     requestData.points_used = data.pointsUsed
   }
+  // 积分抵扣金额（单位：元），用于展示与校验
   if (data.pointsDiscount != null) {
     requestData.points_discount = data.pointsDiscount
   }

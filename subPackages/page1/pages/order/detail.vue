@@ -483,7 +483,25 @@ const loadOrderDetail = async (orderNumber) => {
 			// 优先使用API返回的product_amount，如果没有则使用计算的商品总价，最后使用total_amount
 			productAmount: parseFloat(orderData.product_amount || orderData.productAmount || calculatedProductAmount || orderData.item_amount || 0),
 			couponAmount: parseFloat(orderData.coupon_amount || orderData.couponAmount || orderData.coupon_discount || orderData.couponDiscount || 0),
-			pointsDeduction: parseFloat(orderData.points_discount ?? orderData.points_deduction ?? orderData.pointsDeduction ?? orderData.points_used ?? orderData.pointsUsed ?? 0),
+			pointsDeduction: (() => {
+				// 1）优先使用后端显式返回的积分抵扣字段
+				const raw = orderData.points_discount ?? orderData.points_deduction ?? orderData.pointsDeduction ?? orderData.points_used ?? orderData.pointsUsed
+					?? (orderData.order && (orderData.order.points_discount ?? orderData.order.points_deduction ?? orderData.order.pointsDeduction ?? orderData.order.points_used ?? orderData.order.pointsUsed))
+				let val = parseFloat(raw ?? 0) || 0
+
+				// 2）如果后端字段为 0，但订单里有 original_amount / total_amount / coupon_amount，
+				//    则用「原价 - 优惠券 - 实付」反推出积分抵扣（用于 pending_pay 场景）
+				if (val <= 0) {
+					const original = parseFloat(orderData.original_amount || orderData.originalAmount || 0) || 0
+					const total = parseFloat(orderData.actual_amount || orderData.actualAmount || orderData.total_amount || orderData.totalAmount || 0) || 0
+					const coupon = parseFloat(orderData.coupon_amount || orderData.couponAmount || orderData.coupon_discount || orderData.couponDiscount || 0) || 0
+					const guessed = original - coupon - total
+					if (guessed > 0.0001) {
+						val = guessed
+					}
+				}
+				return Math.max(0, val)
+			})(),
 			shippingFee: parseFloat(orderData.shipping_fee || orderData.shippingFee || orderData.delivery_fee || orderData.deliveryFee || 0),
 			totalAmount: parseFloat(orderData.actual_amount || orderData.actualAmount || orderData.total_amount || orderData.totalAmount || 0),
 			// logistics 字段：优先使用后端返回的物流详情文本，如果没有则使用物流公司名称

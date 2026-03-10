@@ -100,6 +100,7 @@ import { updatePoints } from '@/api/points.js'
 import { addLocalMessage } from '@/api/message.js'
 // 注意：不再调用 /order/pay，订单状态更新由微信支付异步通知 /wechat-pay/notify 处理
 // import { payOrder } from '@/api/order.js'
+import { getOrderDetail } from '@/api/order.js'
 import { createJsapiOrder, notifyWeChatPay, wechatUnifiedOrder } from '../../api/payment.js'
 import { upgradeUser, getUserInfo as getUserInfoApi, refreshUserInfo } from '@/api/user.js'
 import { getLevelText } from '@/utils/level.js'
@@ -867,9 +868,34 @@ onLoad((options) => {
       console.log('=== 支付页面处理后的数据 ===')
       console.log('订单号:', paymentData.value.orderNo)
       console.log('订单ID:', paymentData.value.orderId)
-      console.log('支付金额:', paymentData.value.amount)
+      console.log('支付金额(传入):', paymentData.value.amount)
       console.log('订单数据:', paymentData.value.orderData)
       console.log('商品列表:', paymentData.value.orderData?.items)
+      
+      // 为避免同一订单多次支付金额不一致，必要时用后端订单详情里的实付金额「补充」本地 amount：
+      // 仅在当前 amount 为空或 <=0 时才覆盖，避免正常 0.03 被错误改成 0
+      if (paymentData.value.orderNo) {
+        const originalAmountNum = Number(paymentData.value.amount || 0)
+        getOrderDetail(paymentData.value.orderNo)
+          .then((res) => {
+            const od = res.data || res
+            if (!od) return
+            const backendAmount = Number(
+              od.actual_amount ?? od.actualAmount ?? od.total_amount ?? od.totalAmount ?? 0
+            )
+            if (!Number.isNaN(backendAmount) && backendAmount > 0 && (!originalAmountNum || originalAmountNum <= 0)) {
+              // 同步到 paymentData，用于展示与后续 create-order 的金额计算
+              paymentData.value.orderData = paymentData.value.orderData || {}
+              paymentData.value.orderData.actualAmount = backendAmount
+              paymentData.value.orderData.totalAmount = backendAmount
+              paymentData.value.amount = backendAmount.toFixed(2)
+              console.log('[支付页面] 已用订单详情金额补充本地金额:', backendAmount)
+            }
+          })
+          .catch((e) => {
+            console.warn('[支付页面] 同步订单详情金额失败（不影响首次支付）:', e)
+          })
+      }
       
       // 如果订单号或订单ID为空，记录警告
       if (!paymentData.value.orderNo && !paymentData.value.orderId) {
