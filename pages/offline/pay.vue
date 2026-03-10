@@ -84,7 +84,7 @@
         </view>
 
         <!-- 积分抵扣（非会员商品可用，1积分=1元） -->
-        <view class="points-section">
+        <view v-if="!disablePoints" class="points-section">
           <view class="section-header">
             <text class="section-title">积分抵扣</text>
             <text class="available-points">可用 {{ userPointsBalance }} 积分</text>
@@ -201,26 +201,16 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { getPendingReferrer } from '@/utils/referral.js'
+import { getPendingReferrer, clearPendingReferrer } from '@/utils/referral.js'
 import { getOfflineOrderDetail, getOrderDetail, offlinePayUnified } from '@/api/order.js'
 import { getMyCoupons } from '@/api/coupon.js'
 import { getPointsBalance } from '@/api/points.js'
+import { bindReferrer } from '@/api/user.js'
 
 // 其余 API 按需动态 import
-let payOrder = null
-let clearPendingReferrer = null
-let bindReferrer = null
-async function ensureApis() {
-  if (payOrder) return
-  const [orderApi, referralApi, userApi] = await Promise.all([
-    import('@/api/order.js'),
-    import('@/utils/referral.js'),
-    import('@/api/user.js')
-  ])
-  payOrder = orderApi.payOrder
-  clearPendingReferrer = referralApi.clearPendingReferrer
-  bindReferrer = userApi.bindReferrer
-}
+
+
+
 
 console.log('[线下支付] pay.vue 脚本已执行')
 const loading = ref(true)
@@ -237,7 +227,7 @@ const selectedMethod = ref(1) // 1-微信支付, 2-支付宝, 3-余额支付
 const couponList = ref([])
 const couponLoading = ref(false)
 const selectedCoupon = ref(null)
-
+const disablePoints = ref(false) // 是否禁用积分抵扣
 const orderAmount = computed(() => Number(orderData.value?.total_amount ?? orderData.value?.amount ?? 0))
 const userPointsBalance = ref(0)
 const pointsToUse = ref(0)
@@ -361,7 +351,7 @@ const getStatusText = (status) => {
     1: '待支付',
     2: '已支付',
     3: '待发货',
-    4: '配送中',
+    4: '已退款',
     5: '待收货',
     6: '已完成',
     7: '已取消',
@@ -389,7 +379,6 @@ async function loadCoupons() {
   if (!userId) return
   couponLoading.value = true
   try {
-    await ensureApis()
     const res = await getMyCoupons({ user_id: userId, status: 'unused', page: 1, page_size: 50 })
     const list = res.data?.coupons ?? res.coupons ?? res.data?.rows ?? res.data?.list ?? res.rows ?? res.list ?? []
     couponList.value = Array.isArray(list) ? list : []
@@ -417,14 +406,11 @@ const loadOrder = async () => {
     loading.value = false
     return
   }
-  try {
-    await ensureApis()
-  } catch (e) {
-    console.error('[线下支付] 加载接口失败', e)
-    errorMessage.value = '加载失败，请重试'
-    loading.value = false
-    return
-  }
+  // 根据订单号前缀设置禁用积分标志（例如 OFF 开头的线下订单）
+  if (orderNo.value.startsWith('OFF')) {
+      disablePoints.value = true
+    }
+  if (disablePoints.value) pointsToUse.value = 0
   try {
     loading.value = true
     errorMessage.value = ''
@@ -436,7 +422,7 @@ const loadOrder = async () => {
     const isOfflineOrderNo = /^OFF/i.test(no)
     const isOtherOfflineLike = /^P\d+/i.test(no) || no.length >= 10
     let res = null
-
+	
     if (isOfflineOrderNo) {
       // OFF 开头：仅调线下订单详情接口，不 fallback 到普通订单详情
       try {
@@ -563,6 +549,8 @@ const handlePayment = async () => {
     return
   }
 
+  const amount = actualPayAmount.value
+
   // 检查登录状态
   const token = uni.getStorageSync('token')
   if (!token) {
@@ -583,17 +571,147 @@ const handlePayment = async () => {
     uni.showLoading({ title: '正在支付...' })
 
     const orderNumber = orderData.value.order_no || orderData.value.orderNo || orderNo.value
-    const amount = actualPayAmount.value
     const couponId = selectedCoupon.value ? selectedCoupon.value.id : null
+	const pts = !disablePoints.value && pointsToUse.value > 0 ? pointsToUse.value * 100 : null
 
-    const pts = pointsToUse.value > 0 ? pointsToUse.value : null
-    // 根据选择的支付方式处理（使用抵扣后应付金额）
     if (selectedMethod.value === 1) {
-      await handleWechatPay(orderNumber, amount, couponId, pts)
+      // 微信支付（统一下单）
+      const { refreshUserInfo, getUserInfo } = await import('@/api/user.js')
+      const parseMaybeJson = (v) => {
+        if (!v) return null
+        if (typeof v === 'object') return v
+        try { return JSON.parse(v) } catch (e) { return null }
+      }
+
+      const resolveOpenid = async () => {
+        let wechatInfoRaw = uni.getStorageSync('wechatInfo')
+        let wechatInfo = parseMaybeJson(wechatInfoRaw) || wechatInfoRaw
+        let userInfo = uni.getStorageSync('userInfo') || {}
+        const list = [
+          wechatInfo && (wechatInfo.openid || wechatInfo.wechat_openid || wechatInfo.wx_openid || wechatInfo.mp_openid),
+          uni.getStorageSync('openid'),
+          userInfo && (userInfo.openid || userInfo.wechat_openid || userInfo.wx_openid || userInfo.mp_openid || (userInfo.wechat_info && userInfo.wechat_info.openid))
+        ]
+        for (const v of list) if (v) return v
+
+        try {
+          console.log('[线下支付] OpenID 未在本地找到，尝试刷新用户信息')
+          const refreshed = await refreshUserInfo()
+          const refreshedWechat = parseMaybeJson(refreshed?.wechat_info || refreshed?.wechatInfo || uni.getStorageSync('wechatInfo')) || refreshed?.wechat_info || refreshed?.wechatInfo
+          const refreshedUser = uni.getStorageSync('userInfo') || refreshed
+          const afterList = [
+            refreshedWechat && (refreshedWechat.openid || refreshedWechat.wechat_openid),
+            refreshedUser && (refreshedUser.openid || refreshedUser.wechat_openid || refreshedUser.wx_openid || refreshedUser.mp_openid),
+            uni.getStorageSync('openid')
+          ]
+          for (const v of afterList) if (v) return v
+        } catch (err) {
+          console.warn('[线下支付] 刷新用户信息失败:', err)
+        }
+
+        try {
+          const userInfoStored = uni.getStorageSync('userInfo') || {}
+          const mobile = userInfoStored.mobile || userInfoStored.phone
+          if (mobile) {
+            const resp = await getUserInfo(mobile)
+            const data = resp && (resp.data || resp)
+            const cand = data && (data.openid || data.wechat_openid || (data.wechat_info && data.wechat_info.openid))
+            if (cand) {
+              try { uni.setStorageSync('openid', cand) } catch (e) {}
+              return cand
+            }
+          }
+        } catch (err) {
+          console.warn('[线下支付] getUserInfo 获取 openid 失败:', err)
+        }
+        return null
+      }
+
+      const openid = await resolveOpenid()
+      if (!openid) {
+        uni.showModal({
+          title: '提示',
+          content: '微信支付需要微信登录信息，请重新使用微信登录后再试',
+          showCancel: false,
+          success: (res) => {
+            if (res.confirm) uni.reLaunch({ url: '/pages/index/index' })
+          }
+        })
+        return
+      }
+
+      const userInfo = uni.getStorageSync('userInfo') || {}
+      const userId = userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid ?? null
+      const totalFeeFen = Math.round((Number(amount) || 0) * 100)
+
+      const res = await offlinePayUnified(orderNumber, couponId, openid, userId, totalFeeFen, pts)
+
+
+      const payParams =
+        (res && (res.data?.pay_params || res.pay_params)) ||
+        (res && (res.data?.wechat_pay_params || res.wechat_pay_params)) ||
+        res?.data ||
+        res
+
+      console.log('[线下支付] 统一下单响应:', JSON.stringify(res, null, 2))
+      console.log('[线下支付] 解析出的 payParams:', JSON.stringify(payParams, null, 2))
+
+      if (payParams.paySign === 'ZERO_ORDER_SIGN') {
+        console.log('[线下支付] 零元订单，直接成功')
+        paymentSuccess.value = true
+        showPaymentResult.value = true
+        await bindToMerchantIfOffline()
+        await handleReferralCode()
+      } else {
+        if (!payParams.timeStamp || !payParams.nonceStr || !payParams.package || !payParams.paySign) {
+          throw new Error('支付参数错误，请重试')
+        }
+
+        const wxPayOnly = {
+          provider: 'wxpay',
+          timeStamp: String(payParams.timeStamp),
+          nonceStr: payParams.nonceStr,
+          package: payParams.package || payParams.packageValue,
+          signType: payParams.signType || 'MD5',
+          paySign: payParams.paySign
+        }
+
+        await new Promise((resolve, reject) => {
+          uni.requestPayment({
+            ...wxPayOnly,
+            success: async (payRes) => {
+              console.log('[线下支付] 微信支付成功:', payRes)
+              try {
+                await bindToMerchantIfOffline()
+                await handleReferralCode()
+              } catch (e) {
+                console.warn('[线下支付] 支付回调处理异常', e)
+              }
+              paymentSuccess.value = true
+              paymentResultMsg.value = ''
+              showPaymentResult.value = true
+              resolve(payRes)
+            },
+            fail: (err) => {
+              console.error('[线下支付] 微信支付失败:', err)
+              const rawMsg = String(err?.errMsg || err?.message || err?.msg || '')
+              const isCancel = rawMsg.includes('cancel')
+              const isParamError = /total_fee|缺少参数|参数错误/i.test(rawMsg)
+              let friendlyMsg
+              if (isCancel && !isParamError) {
+                friendlyMsg = '用户已取消支付'
+              } else if (isParamError) {
+                friendlyMsg = '支付参数异常，请重试或联系商户'
+              } else {
+                friendlyMsg = rawMsg.replace(/requestPayment:fail\s*/i, '').trim() || '支付失败，请稍后重试'
+              }
+              reject(new Error(friendlyMsg))
+            }
+          })
+        })
+      }
     } else if (selectedMethod.value === 2) {
       uni.showToast({ title: '支付宝支付暂未开通', icon: 'none' })
-    } else if (selectedMethod.value === 3) {
-      await handleBalancePay(orderNumber, amount, couponId, pts)
     }
   } catch (error) {
     console.error('[线下支付] 支付失败:', error)
@@ -609,179 +727,16 @@ const handlePayment = async () => {
 /**
  * 微信支付（与正常购物支付页一致：多来源获取 openid + 刷新用户信息回退）
  */
-const handleWechatPay = async (orderNumber, amount, couponId = null, pointsToUseVal = null) => {
-  const { refreshUserInfo, getUserInfo } = await import('@/api/user.js')
 
-  const parseMaybeJson = (v) => {
-    if (!v) return null
-    if (typeof v === 'object') return v
-    try { return JSON.parse(v) } catch (e) { return null }
-  }
 
-  const resolveOpenid = async () => {
-    let wechatInfoRaw = uni.getStorageSync('wechatInfo')
-    let wechatInfo = parseMaybeJson(wechatInfoRaw) || wechatInfoRaw
-    let userInfo = uni.getStorageSync('userInfo') || {}
-    const list = [
-      wechatInfo && (wechatInfo.openid || wechatInfo.wechat_openid || wechatInfo.wx_openid || wechatInfo.mp_openid),
-      uni.getStorageSync('openid'),
-      userInfo && (userInfo.openid || userInfo.wechat_openid || userInfo.wx_openid || userInfo.mp_openid || (userInfo.wechat_info && userInfo.wechat_info.openid))
-    ]
-    for (const v of list) if (v) return v
 
-    try {
-      console.log('[线下支付] OpenID 未在本地找到，尝试刷新用户信息')
-      const refreshed = await refreshUserInfo()
-      const refreshedWechat = parseMaybeJson(refreshed?.wechat_info || refreshed?.wechatInfo || uni.getStorageSync('wechatInfo')) || refreshed?.wechat_info || refreshed?.wechatInfo
-      const refreshedUser = uni.getStorageSync('userInfo') || refreshed
-      const afterList = [
-        refreshedWechat && (refreshedWechat.openid || refreshedWechat.wechat_openid),
-        refreshedUser && (refreshedUser.openid || refreshedUser.wechat_openid || refreshedUser.wx_openid || refreshedUser.mp_openid),
-        uni.getStorageSync('openid')
-      ]
-      for (const v of afterList) if (v) return v
-    } catch (err) {
-      console.warn('[线下支付] 刷新用户信息失败:', err)
-    }
-
-    try {
-      const userInfoStored = uni.getStorageSync('userInfo') || {}
-      const mobile = userInfoStored.mobile || userInfoStored.phone
-      if (mobile) {
-        const resp = await getUserInfo(mobile)
-        const data = resp && (resp.data || resp)
-        const cand = data && (data.openid || data.wechat_openid || (data.wechat_info && data.wechat_info.openid))
-        if (cand) {
-          try { uni.setStorageSync('openid', cand) } catch (e) {}
-          return cand
-        }
-      }
-    } catch (err) {
-      console.warn('[线下支付] getUserInfo 获取 openid 失败:', err)
-    }
-    return null
-  }
-
-  let openid = await resolveOpenid()
-  console.log('[线下支付] OpenID 获取:', openid ? String(openid).substring(0, 10) + '...' : '未找到')
-
-  if (!openid) {
-    uni.showModal({
-      title: '提示',
-      content: '微信支付需要微信登录信息，请重新使用微信登录后再试',
-      showCancel: false,
-      success: (res) => {
-        if (res.confirm) uni.reLaunch({ url: '/pages/index/index' })
-      }
-    })
-    throw new Error('无法获取微信用户信息，请重新登录')
-  }
-
-  // 线下统一下单：传 openid、user_id、total_fee(分)，后端必须把 total_fee 传给微信统一下单
-  const userInfo = uni.getStorageSync('userInfo') || {}
-  const userId = userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid ?? null
-  let totalFeeFen = Math.round((Number(amount) || 0) * 100)
-  if (totalFeeFen <= 0 && orderData.value) {
-    const fallbackYuan = Number(orderData.value.total_amount ?? orderData.value.amount ?? 0)
-    totalFeeFen = Math.round(fallbackYuan * 100)
-  }
-  if (totalFeeFen <= 0) {
-    throw new Error('订单金额异常，无法发起支付')
-  }
-  console.log('[线下支付] 调起 /api/offline/zhifu/tongyi', { order_no: orderNumber, total_fee: totalFeeFen, openid: !!openid, user_id: userId })
-  const res = await offlinePayUnified(orderNumber, couponId, openid, userId, totalFeeFen)
-
-  // 检查返回结果
-  const payParams =
-    // 1）优先使用标准字段 pay_params
-    (res && (res.data?.pay_params || res.pay_params)) ||
-    // 2）兼容后端当前返回的 wechat_pay_params 结构
-    (res && (res.data?.wechat_pay_params || res.wechat_pay_params)) ||
-    // 3）兜底：直接使用 data 或整个响应对象
-    res?.data ||
-    res
-
-  console.log('[线下支付] 统一下单完整响应:', JSON.stringify(res, null, 2))
-  console.log('[线下支付] 解析出的 payParams:', JSON.stringify(payParams, null, 2))
-
-  if (!payParams.timeStamp || !payParams.nonceStr || !payParams.package || !payParams.paySign) {
-    throw new Error('支付参数错误，请重试')
-  }
-
-  // wx.requestPayment 只接受 6 个字段，不要传入 total_fee 等多余参数
-  const wxPayOnly = {
-    provider: 'wxpay',
-    timeStamp: String(payParams.timeStamp),
-    nonceStr: payParams.nonceStr,
-    package: payParams.package || payParams.packageValue,
-    signType: payParams.signType || 'MD5',
-    paySign: payParams.paySign
-  }
-
-  console.log('[线下支付] 调用 wx.requestPayment 参数:', wxPayOnly)
-
-  await ensureApis()
-  await new Promise((resolve, reject) => {
-    uni.requestPayment({
-      ...wxPayOnly,
-      success: async (payRes) => {
-        console.log('[线下支付] 微信支付成功:', payRes)
-        try {
-          await payOrder(orderNumber, 'wechat', couponId, pointsToUseVal, openid)
-          await bindToMerchantIfOffline()
-          await handleReferralCode()
-        } catch (e) {
-          console.warn('[线下支付] 支付回调处理异常', e)
-        }
-        paymentSuccess.value = true
-        paymentResultMsg.value = ''
-        showPaymentResult.value = true
-        resolve(payRes)
-      },
-      fail: (err) => {
-        console.error('[线下支付] 微信支付失败:', err)
-        const rawMsg = String(err?.errMsg || err?.message || err?.msg || '')
-        const isCancel = rawMsg.includes('cancel')
-        const isParamError = /total_fee|缺少参数|参数错误/i.test(rawMsg)
-        let friendlyMsg
-        if (isCancel && !isParamError) {
-          friendlyMsg = '用户已取消支付'
-        } else if (isParamError) {
-          friendlyMsg = '支付参数异常，请重试或联系商户'
-        } else {
-          friendlyMsg = rawMsg.replace(/requestPayment:fail\s*/i, '').trim() || '支付失败，请稍后重试'
-        }
-        reject(new Error(friendlyMsg))
-      }
-    })
-  })
-}
-
-/**
- * 余额支付
- */
-const handleBalancePay = async (orderNumber, amount, couponId = null, pointsToUseVal = null) => {
-  const userInfo = uni.getStorageSync('userInfo') || {}
-  await ensureApis()
-  const balance = Number(userInfo.balance || userInfo.user_balance || 0)
-  const payAmt = parseFloat(amount)
-  if (balance < payAmt) {
-    throw new Error('余额不足，请选择其他支付方式')
-  }
-  await payOrder(orderNumber, 'balance', couponId, pointsToUseVal)
-  await bindToMerchantIfOffline()
-  await handleReferralCode()
-  paymentSuccess.value = true
-  paymentResultMsg.value = ''
-  showPaymentResult.value = true
-}
 
 /**
  * 线下支付成功：把当前用户绑到商家下面（推荐人=商家）
  */
 const bindToMerchantIfOffline = async () => {
   try {
-    await ensureApis()
+    // 直接使用静态导入的 bindReferrer，不再动态导入
     const order = orderData.value
     const merchantId = order?.merchant_id ?? order?.merchantId
     if (merchantId == null || merchantId === '') {
@@ -811,12 +766,9 @@ const bindToMerchantIfOffline = async () => {
   }
 }
 
-/**
- * 处理推荐码绑定（扫码/链接带来的待绑定推荐人）
- */
 const handleReferralCode = async () => {
   try {
-    await ensureApis()
+    // 直接使用静态导入的 bindReferrer 和 clearPendingReferrer
     const pending = getPendingReferrer()
     if (!pending || !pending.referralCode) {
       console.log('[线下支付] 没有待绑定的推荐码')
@@ -831,7 +783,6 @@ const handleReferralCode = async () => {
       return
     }
 
-    // 如果用户已经有推荐人，跳过
     if (userInfo.referrer_id || userInfo.referrerId) {
       console.log('[线下支付] 用户已有推荐人，跳过绑定')
       clearPendingReferrer()
@@ -849,7 +800,6 @@ const handleReferralCode = async () => {
     clearPendingReferrer()
   } catch (error) {
     console.error('[线下支付] 绑定推荐人失败:', error)
-    // 绑定失败不影响支付流程
   }
 }
 
@@ -947,6 +897,11 @@ onLoad((options) => {
   }
   
   orderNo.value = orderNoFromParams.trim()
+  // 判断是否禁用积分：如果 URL 参数中 noPoints=1 或订单号以 OFF 开头
+  if (opts.noPoints === '1' || orderNo.value.startsWith('OFF')) {
+      disablePoints.value = true
+  }
+  if (disablePoints.value) pointsToUse.value = 0
   console.log('[线下支付] 解析到订单号:', orderNo.value)
   loadOrder()
 })

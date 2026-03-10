@@ -46,7 +46,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-
+import { createOfflinePaymentOrder } from '../../utils/payment.js'
 const merchantId = ref(null)
 const amount = ref('')
 const productName = ref('')
@@ -124,8 +124,7 @@ async function goPay() {
   }
   submitting.value = true
   try {
-    const mod = await import('../../subPackages/page2/api/payment.js')
-    const createOfflinePaymentOrder = mod.createOfflinePaymentOrder
+    // 直接使用静态导入的函数
     const res = await createOfflinePaymentOrder({
       merchant_id: merchantId.value,
       store_name: '线下收款',

@@ -83,10 +83,11 @@ function normalizeQrcodeResponse(res) {
   if (typeof res === 'object' && res.data != null) {
     const d = res.data
     if (typeof d === 'string') return d.trim()
-    // 后端返回 { code: 0, data: { qrcode: "data:image/png;base64,..." } }
-    if (d && typeof d === 'object' && (d.qrcode != null || d.qrcode_b64 != null)) {
-      const raw = (d.qrcode ?? d.qrcode_b64 ?? '').trim()
-      return raw
+    // 后端返回 { code: 0, data: { plain_qrcode: "base64...", qrcode: "太阳码..." } }
+    // 优先使用 plain_qrcode（普通二维码），其次 qrcode_b64，最后 qrcode（太阳码）
+    if (d && typeof d === 'object') {
+      const raw = (d.plain_qrcode ?? d.qrcode_b64 ?? d.qrcode ?? '').trim()
+      if (raw) return raw
     }
   }
   return ''
@@ -211,6 +212,10 @@ async function loadQrcode() {
   qrcodeB64.value = ''
   try {
     const res = await getPermanentCollectionQrcode(merchantId.value)
+    // 打印后端返回的原始数据
+    console.log('[永久收款码] 后端返回的原始数据:', res)
+    console.log('[永久收款码] 后端数据类型:', typeof res)
+    console.log('[永久收款码] 完整的返回对象:', JSON.stringify(res, null, 2))
     const raw = normalizeQrcodeResponse(res)
     if (!raw) {
       errorMsg.value = '接口未返回收款码数据'
@@ -233,7 +238,7 @@ async function loadQrcode() {
       qrcodeB64.value = raw.replace(/\s/g, '')
     }
     // 在二维码中心合成用户头像（样子变、功能不变，仍可微信扫）
-    compositeQrcodeWithAvatar()
+    // compositeQrcodeWithAvatar()  // ← 注释此行可显示普通二维码
   } catch (e) {
     console.error('[永久收款码] 获取失败', e)
     errorMsg.value = (e && (e.message || e.detail || e.msg)) || '生成失败，请重试'

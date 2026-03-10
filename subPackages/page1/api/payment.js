@@ -141,7 +141,14 @@ export const createJsapiOrder = (data) => {
 export const queryPaymentStatus = (orderNo) => {
   return request.get(`/payment/query/${orderNo}`)
 }
-
+/**
+ * 创建线下收款订单（永久收款码专用）
+ * @param {Object} data - 订单数据，包含 merchant_id, store_name, amount, product_name, remark 等
+ * @returns {Promise} 返回订单创建结果，应包含订单号 order_no 或 orderNo
+ */
+export const createOfflinePaymentOrder = (data) => {
+  return request.post('/api/offline/order/create', data)
+}
 export default {
   notifyWeChatPay,
   createPayment,
@@ -151,6 +158,7 @@ export default {
   notifyMerchant,
   wechatUnifiedOrder,
   createJsapiOrder,
+  createOfflinePaymentOrder,
   queryPaymentStatus
 }
 

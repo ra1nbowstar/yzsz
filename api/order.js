@@ -133,17 +133,16 @@ export const getPermanentCollectionQrcode = (merchant_id) => {
 }
 
 /**
- * 线下收银统一下单（支持优惠券）
- * POST /api/offline/zhifu/tongyi?order_no=xxx&coupon_id=yyy
- * 请求体带 openid、user_id、total_fee(分)，后端需把 total_fee 传给微信统一下单
- * @param {String} order_no 订单号（必填）
- * @param {Number|null} [coupon_id] 优惠券ID（可选）
- * @param {String} [openid] 当前用户 openid（建议传）
- * @param {Number|String} [user_id] 当前用户 user_id（建议传）
- * @param {Number} [total_fee] 支付金额单位：分（必传，后端调微信统一下单需要）
- * @returns {Promise} 成功时返回支付参数（供 wx.requestPayment 使用）
+ * 线下收银统一下单（支持优惠券和积分）
+ * @param {String} order_no 订单号
+ * @param {Number|null} coupon_id 优惠券ID
+ * @param {String} openid 用户openid
+ * @param {Number|String} user_id 用户ID
+ * @param {Number} total_fee 支付金额（单位：分）
+ * @param {Number|null} points_to_use 积分抵扣金额（单位：元，根据后端要求决定）
+ * @returns {Promise}
  */
-export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_id = null, total_fee = null) => {
+export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_id = null, total_fee = null, points_to_use = null) => {
   if (!order_no || !String(order_no).trim()) {
     return Promise.reject(new Error('订单号不能为空'))
   }
@@ -152,16 +151,17 @@ export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_
   if (coupon_id != null && coupon_id !== '') {
     query += `&coupon_id=${encodeURIComponent(String(coupon_id))}`
   }
-  const totalFeeNum = (total_fee != null && total_fee !== '' && !isNaN(Number(total_fee))) ? Math.round(Number(total_fee)) : null
-  if (totalFeeNum != null && totalFeeNum > 0) {
-    query += `&total_fee=${totalFeeNum}`
-  }
-  const url = `/api/offline/zhifu/tongyi?${query}`
   const body = {}
   if (openid && String(openid).trim()) body.openid = String(openid).trim()
   if (user_id != null && user_id !== '') body.user_id = user_id
-  if (totalFeeNum != null && totalFeeNum > 0) body.total_fee = totalFeeNum
-  return request.post(url, body)
+  if (total_fee != null && total_fee > 0) body.total_fee = total_fee
+  // 传递积分参数（注意单位：需与后端确认）
+  if (points_to_use != null && points_to_use > 0) {
+    // 如果后端要求以分为单位，则乘以100；如果以元为单位，直接传递
+    // 此处假设后端以元为单位，直接传递 points_to_use
+    body.points_to_use = points_to_use
+  }
+  return request.post(`/api/offline/zhifu/tongyi?${query}`, body)
 }
 
 /**
@@ -797,6 +797,22 @@ export const exportOrders = (orderNumbers, options = {}) => {
     req.responseType = returnLink ? 'json' : 'arraybuffer'
     uni.request(req)
   })
+}
+/**
+ * 获取线下订单列表（支持商家和用户）
+ * @param {Object} params 查询参数
+ * @param {Number} [params.merchant_id] 商家ID（商家查询时必填）
+ * @param {Number} [params.user_id] 用户ID（用户查询时必填）
+ * @param {String} [params.status] 订单状态（可选，值需与后端约定，如 pending_pay、pending_ship 等）
+ * @param {Number} [params.page] 页码
+ * @param {Number} [params.pageSize] 每页数量
+ * @returns {Promise}
+ */
+export const getOfflineOrderList = (params = {}) => {
+  // 如果后端期望的分页参数是 page_size，需要在这里转换
+  // 例如： const queryParams = { ...params, page_size: params.pageSize }; delete queryParams.pageSize;
+  // 根据实际情况调整
+  return request.get('/api/offline/dingdan/liebiao', params)
 }
 
 
