@@ -2,8 +2,11 @@
   <view class="fund-pool-page">
     <!-- 页面标题 -->
     <view class="page-header">
-      <text class="page-title">资金池分配配置</text>
-      <text class="page-subtitle">管理各资金池的分配比例</text>
+      <view class="page-header-text">
+        <text class="page-title">资金池分配配置</text>
+        <text class="page-subtitle">管理各资金池的分配比例</text>
+      </view>
+      <button class="btn-use" @tap="goToMyFunds">去使用</button>
     </view>
 
     <!-- 资金池列表（不显示商户余额，商户余额固定 80% 保持不变） -->
@@ -103,19 +106,20 @@ const formatBalance = (balance) => {
 }
 
 /**
- * 初始化资金池列表
+ * 初始化资金池列表（data 为空时用默认比例占位，避免白屏）
  */
 const initPoolList = (data) => {
+  const raw = data && typeof data === 'object' ? data : {}
   poolList.value = Object.keys(poolConfig).map(key => {
     // 新数据格式：data[key] 是一个对象，包含 allocation 和 balance
-    const poolData = data[key] || {}
-    const allocation = poolData.allocation || data[key] || 0 // 兼容旧格式
+    const poolData = raw[key] || {}
+    const allocation = poolData.allocation ?? raw[key] ?? 0 // 兼容旧格式
     const balance = poolData.balance
     
     return {
       key,
-      name: poolConfig[key].name,
-      description: poolConfig[key].description,
+      name: (poolConfig[key] && poolConfig[key].name) || key,
+      description: (poolConfig[key] && poolConfig[key].description) || '',
       value: isNaN(parseFloat(allocation)) ? '' : (parseFloat(allocation) * 100).toFixed(4), // 转换为百分比显示，保留4位小数
       balance: balance !== undefined ? parseFloat(balance) : undefined // 余额
     }
@@ -169,15 +173,17 @@ const loadData = async () => {
     const res = await getFundPoolAllocations()
     console.log('[资金池] 获取配置成功:', res)
     
-    if (res.success && res.data) {
+    if (res && res.success && res.data != null) {
       initPoolList(res.data)
     } else {
-      uni.showToast({ title: res.message || '加载失败', icon: 'none' })
+      initPoolList({})
+      if (res && res.message) uni.showToast({ title: res.message, icon: 'none' })
     }
   } catch (error) {
     console.error('[资金池] 获取配置失败:', error)
+    initPoolList({})
     uni.showToast({ 
-      title: error.message || '加载失败，请重试', 
+      title: (error && error.message) ? error.message : '加载失败，请重试', 
       icon: 'none' 
     })
   } finally {
@@ -252,6 +258,13 @@ const saveData = async () => {
   }
 }
 
+/** 跳转到「我的资金」页面 */
+const goToMyFunds = () => {
+  uni.navigateTo({
+    url: '/subPackages/page2/pages/fund-pool/index'
+  })
+}
+
 onMounted(() => {
   loadData()
 })
@@ -267,7 +280,15 @@ onMounted(() => {
 /* 页面标题 */
 .page-header {
   margin-bottom: 40rpx;
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.page-header-text {
+  flex: 1;
+  text-align: left;
 }
 
 .page-title {
@@ -282,6 +303,29 @@ onMounted(() => {
   display: block;
   font-size: 24rpx;
   color: #999;
+}
+
+.btn-use {
+  flex-shrink: 0;
+  height: 88rpx;
+  line-height: 88rpx;
+  padding: 0 48rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #3d6bff, #5a7fff);
+  border: none;
+  border-radius: 44rpx;
+  box-shadow: 0 8rpx 24rpx rgba(61, 107, 255, 0.35);
+}
+
+.btn-use::after {
+  border: none;
+}
+
+.btn-use:active {
+  opacity: 0.9;
+  transform: scale(0.98);
 }
 
 /* 资金池列表 */

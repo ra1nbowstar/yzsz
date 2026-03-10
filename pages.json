@@ -599,6 +599,12 @@
 			]
 		}
 	],
+	"preloadRule": {
+		"subPackages/page2/pages/merchant/center": {
+			"network": "all",
+			"packages": ["subPackages/page1"]
+		}
+	},
 	"tabBar": {
 		"color": "#999999",
 		"selectedColor": "#3d6bff",

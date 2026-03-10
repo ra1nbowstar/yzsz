@@ -6,6 +6,86 @@
       <text class="subtitle">资金可转化为优惠券使用</text>
     </view>
 
+    <!-- 资金池转优惠券操作（资金池为选择，非手填） -->
+    <view class="transform-section">
+      <text class="section-title">资金池转优惠券</text>
+      <view class="form-row">
+        <text class="form-label">选择资金池</text>
+        <picker
+          mode="selector"
+          :range="poolOptionsForPicker"
+          range-key="name"
+          :value="transformPoolIndex"
+          :disabled="poolOptionsForPicker.length === 0"
+          @change="onTransformPoolChange"
+        >
+          <view class="picker-value picker-with-arrow">
+            <text class="picker-text">{{ poolDisplayText }}</text>
+            <text class="picker-arrow">›</text>
+          </view>
+        </picker>
+        <text v-if="!loading && fundList.length === 0" class="picker-hint">暂无资金池数据，请检查接口或稍后重试</text>
+      </view>
+      <view class="form-row">
+        <text class="form-label">接收用户ID</text>
+        <input
+          class="form-input"
+          type="number"
+          v-model="transformUserId"
+          placeholder="必填，接收优惠券的用户ID"
+        />
+      </view>
+      <view class="form-row">
+        <text class="form-label">转化金额</text>
+        <input
+          class="form-input"
+          type="digit"
+          v-model="transformFormAmount"
+          placeholder="必填，转正金额"
+        />
+      </view>
+      <view class="form-row">
+        <text class="form-label">优惠券类型</text>
+        <picker
+          mode="selector"
+          :range="couponTypeOptions"
+          range-key="label"
+          :value="couponTypeIndex"
+          @change="onCouponTypeChange"
+        >
+          <view class="picker-value">{{ couponTypeOptions[couponTypeIndex].label }}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">适用商品</text>
+        <picker
+          mode="selector"
+          :range="applicableTypeOptions"
+          range-key="label"
+          :value="applicableTypeIndex"
+          @change="onApplicableTypeChange"
+        >
+          <view class="picker-value">{{ applicableTypeOptions[applicableTypeIndex].label }}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">备注</text>
+        <input
+          class="form-input"
+          type="text"
+          v-model="transformRemark"
+          placeholder="选填"
+        />
+      </view>
+      <button
+        class="submit-transform-btn"
+        :disabled="!canSubmitTransform || submittingTransform"
+        @tap="submitTransform"
+      >
+        {{ submittingTransform ? '提交中...' : '提交转正' }}
+      </button>
+    </view>
+
     <!-- 资金列表 -->
     <view class="fund-list">
       <view 
@@ -106,28 +186,135 @@ const showModal = ref(false)
 const selectedFund = ref({})
 const transformAmount = ref('')
 
+// 资金池转优惠券表单（资金池为选择器）
+const transformPoolIndex = ref(0)
+const transformUserId = ref('')
+const transformFormAmount = ref('')
+const transformRemark = ref('')
+const submittingTransform = ref(false)
+const couponTypeOptions = ref([
+  { value: 'user', label: '用户券' },
+  { value: 'merchant', label: '商户券' }
+])
+const applicableTypeOptions = ref([
+  { value: 'all', label: '全部商品' },
+  { value: 'normal_only', label: '仅普通商品' },
+  { value: 'member_only', label: '仅会员商品' }
+])
+const couponTypeIndex = ref(0)
+const applicableTypeIndex = ref(0)
+
 // 格式化金额
 const formatAmount = (val) => {
   return Number(val || 0).toFixed(2)
 }
 
-// 是否可以转化
+// 是否可以转化（弹窗内）
 const canTransform = computed(() => {
   const amount = Number(transformAmount.value)
   return amount > 0 && amount <= (selectedFund.value.balance || 0)
 })
 
-// 加载资金列表
+// 选择器用的资金池列表：有接口数据用接口数据，否则用默认列表（保证“选择”始终可用）
+const defaultPoolOptions = [
+  { type: 'public_welfare', name: '公益基金' },
+  { type: 'maintain_pool', name: '维护池' },
+  { type: 'subsidy_pool', name: '补贴池' },
+  { type: 'director_pool', name: '联创奖励池' },
+  { type: 'shop_pool', name: '店铺池' },
+  { type: 'city_pool', name: '城市池' },
+  { type: 'branch_pool', name: '分支池' }
+]
+const poolOptionsForPicker = computed(() => {
+  const list = fundList.value
+  if (list && list.length > 0) return list
+  return defaultPoolOptions
+})
+const poolDisplayText = computed(() => {
+  const opts = poolOptionsForPicker.value
+  const idx = transformPoolIndex.value
+  if (opts.length === 0) return '请选择资金池'
+  if (opts[idx]) return opts[idx].name
+  return opts[0].name
+})
+
+// 表单提交：资金池、用户ID、金额必填
+const canSubmitTransform = computed(() => {
+  const opts = poolOptionsForPicker.value
+  const pool = opts[transformPoolIndex.value]
+  const uid = String(transformUserId.value || '').trim()
+  const amount = Number(transformFormAmount.value)
+  return pool && uid && amount > 0
+})
+
+const onTransformPoolChange = (e) => {
+  transformPoolIndex.value = Number(e.detail.value) || 0
+}
+const onCouponTypeChange = (e) => {
+  couponTypeIndex.value = Number(e.detail.value) || 0
+}
+const onApplicableTypeChange = (e) => {
+  applicableTypeIndex.value = Number(e.detail.value) || 0
+}
+
+// 提交资金池转优惠券（调用接口）
+const submitTransform = async () => {
+  if (!canSubmitTransform.value || submittingTransform.value) return
+  const opts = poolOptionsForPicker.value
+  const pool = opts[transformPoolIndex.value]
+  const poolType = pool.type || pool.pool_type || pool.key
+  if (!poolType) {
+    uni.showToast({ title: '请选择资金池', icon: 'none' })
+    return
+  }
+  submittingTransform.value = true
+  try {
+    await transformToCoupon({
+      pool_type: poolType,
+      user_id: Number(transformUserId.value),
+      amount: Number(transformFormAmount.value),
+      coupon_type: couponTypeOptions.value[couponTypeIndex.value].value,
+      applicable_product_type: applicableTypeOptions.value[applicableTypeIndex.value].value,
+      remark: transformRemark.value ? String(transformRemark.value).trim() : undefined
+    })
+    uni.showToast({ title: '转正成功', icon: 'success' })
+    transformFormAmount.value = ''
+    transformRemark.value = ''
+    loadFundList()
+  } catch (err) {
+    uni.showToast({ title: err.message || err.msg || '转正失败', icon: 'none' })
+  } finally {
+    submittingTransform.value = false
+  }
+}
+
+// 加载资金列表（同时用于下方「选择资金池」选择器）
 const loadFundList = async () => {
   loading.value = true
   try {
     const res = await getTransformAllowed()
-    // 映射资金类型名称
-    fundList.value = (res.data || res || []).map(item => ({
-      ...item,
-      name: getFundName(item.type),
-      description: getFundDesc(item.type)
-    }))
+    let raw = res.data != null ? res.data : res
+    if (!Array.isArray(raw)) {
+      raw = typeof raw === 'object' ? Object.keys(raw).map(key => ({ type: key, ...(raw[key] || {}) })) : []
+    }
+    fundList.value = raw.map(item => {
+      const type = item.type || item.pool_type || item.key
+      return {
+        ...item,
+        type,
+        pool_type: type,
+        name: getFundName(type),
+        description: getFundDesc(type)
+      }
+    })
+    if (!transformUserId.value) {
+      const userInfo = uni.getStorageSync('userInfo') || {}
+      const uid = userInfo.id ?? userInfo.user_id
+      if (uid) transformUserId.value = String(uid)
+    }
+    if (fundList.value.length > 0 && transformPoolIndex.value >= fundList.value.length) {
+      transformPoolIndex.value = 0
+    }
   } catch (err) {
     uni.showToast({ title: '加载失败', icon: 'none' })
   } finally {
@@ -147,9 +334,18 @@ const getFundName = (type) => {
     store: '社区店补',
     operation_center: '运营中心补贴',
     company: '分公司补贴',
-    career_fund: '事业基金'
+    career_fund: '事业基金',
+    public_welfare: '公益基金',
+    maintain_pool: '维护池',
+    subsidy_pool: '补贴池',
+    director_pool: '联创奖励池',
+    shop_pool: '店铺池',
+    city_pool: '城市池',
+    branch_pool: '分支池',
+    merchant_balance: '商户余额',
+    fund_pool: '资金池'
   }
-  return names[type] || type
+  return names[type] || (type ? String(type) : '未知')
 }
 
 // 获取资金描述
@@ -185,9 +381,19 @@ const confirmTransform = async () => {
   transforming.value = selectedFund.value.type
   
   try {
-    const res = await transformToCoupon({
-      fund_type: selectedFund.value.type,
-      amount: Number(transformAmount.value)
+    const userInfo = uni.getStorageSync('userInfo') || {}
+    const userId = userInfo.id ?? userInfo.user_id
+    if (!userId) {
+      uni.showToast({ title: '请先登录', icon: 'none' })
+      transforming.value = ''
+      return
+    }
+    await transformToCoupon({
+      pool_type: selectedFund.value.type || selectedFund.value.pool_type,
+      user_id: Number(userId),
+      amount: Number(transformAmount.value),
+      coupon_type: 'user',
+      applicable_product_type: 'all'
     })
     
     uni.showToast({ 
@@ -246,6 +452,98 @@ onLoad(() => {
   color: #999;
   margin-top: 10rpx;
   display: block;
+}
+
+/* 资金池转优惠券表单 */
+.transform-section {
+  background: white;
+  border-radius: 20rpx;
+  padding: 32rpx;
+  margin-bottom: 32rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06);
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  display: block;
+  margin-bottom: 28rpx;
+}
+
+.form-row {
+  margin-bottom: 24rpx;
+}
+
+.form-label {
+  font-size: 28rpx;
+  color: #666;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.form-input {
+  width: 100%;
+  height: 80rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  color: #333;
+  background: #f8f9fa;
+  border-radius: 12rpx;
+  border: 2rpx solid #e8e8e8;
+}
+
+.picker-value {
+  height: 80rpx;
+  line-height: 80rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  color: #333;
+  background: #f8f9fa;
+  border-radius: 12rpx;
+  border: 2rpx solid #e8e8e8;
+}
+
+.picker-with-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.picker-text {
+  flex: 1;
+  color: #333;
+}
+
+.picker-value .picker-arrow {
+  margin-left: 16rpx;
+  font-size: 36rpx;
+  color: #999;
+  font-weight: 300;
+}
+
+.picker-hint {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #ff6b00;
+}
+
+.submit-transform-btn {
+  margin-top: 32rpx;
+  height: 88rpx;
+  line-height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  background: linear-gradient(135deg, #07c160, #05a350);
+  color: white;
+  border: none;
+}
+
+.submit-transform-btn[disabled] {
+  opacity: 0.5;
+  background: #ccc;
 }
 
 .fund-list {
