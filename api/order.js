@@ -377,23 +377,21 @@ export const updateOrderStatusById = async (orderId, status, reason = '') => {
 
 /**
  * 用户确认收货（微信组件回调后调用；后端需做二次校验：查询微信订单发货状态再更新业务订单）
- * @param {Object} payload 必填 { order_number: string, transaction_id: string }
+ * @param {Object} payload 必填 { order_number: string }, 可选 { transaction_id: string }（0元订单无微信流水号可传空）
  * @returns {Promise}
  */
 export const confirmReceive = (payload) => {
   const orderNumber = payload && (payload.order_number || payload.orderNumber)
   const transactionId = payload && (payload.transaction_id || payload.transactionId)
   const orderNumberStr = String(orderNumber || '').trim()
-  const transactionIdStr = String(transactionId || '').trim()
+  const transactionIdStr = String(transactionId ?? '').trim()
   if (!orderNumberStr || orderNumberStr === 'undefined' || orderNumberStr === 'null') {
     return Promise.reject(new Error('订单号不能为空'))
   }
-  if (!transactionIdStr || transactionIdStr === 'undefined' || transactionIdStr === 'null') {
-    return Promise.reject(new Error('transaction_id 不能为空'))
-  }
+  // 0 元订单可能无微信支付流水号，不再在此处拦截，由后端判断
   const body = {
     order_number: orderNumberStr,
-    transaction_id: transactionIdStr
+    transaction_id: transactionIdStr || ''
   }
   return request.post('/order/confirm-receive', body)
 }

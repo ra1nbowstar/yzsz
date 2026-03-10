@@ -1260,9 +1260,15 @@ const loadOrderDetail = async (orderNo) => {
       completeTime: orderData.completed_at ? formatTime(orderData.completed_at) : (orderData.complete_time ? formatTime(orderData.complete_time) : null),
       // 优先使用API返回的product_amount，如果没有则使用计算的商品总价
       productAmount: parseFloat(orderData.product_amount || orderData.productAmount || calculatedProductAmount || orderData.item_amount || 0),
-      discountAmount: parseFloat(orderData.discount_amount || orderData.discountAmount || orderData.coupon_discount || orderData.couponDiscount || 0),
       deliveryFee: parseFloat(orderData.shipping_fee || orderData.shippingFee || orderData.delivery_fee || orderData.deliveryFee || 0),
       totalAmount: parseFloat(orderData.actual_amount || orderData.actualAmount || orderData.total_amount || orderData.totalAmount || 0),
+      // 优惠金额 = 原价 - 实付（原价 = 商品总价 + 配送费）
+      discountAmount: (() => {
+        const productAmount = parseFloat(orderData.product_amount || orderData.productAmount || calculatedProductAmount || orderData.item_amount || 0)
+        const deliveryFee = parseFloat(orderData.shipping_fee || orderData.shippingFee || orderData.delivery_fee || orderData.deliveryFee || 0)
+        const totalAmount = parseFloat(orderData.actual_amount || orderData.actualAmount || orderData.total_amount || orderData.totalAmount || 0)
+        return Math.max(0, productAmount + deliveryFee - totalAmount)
+      })(),
       remark: orderData.remark || orderData.note || '',
       logistics: orderData.logistics_company ? {
         company: orderData.logistics_company,

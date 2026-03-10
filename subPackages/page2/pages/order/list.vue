@@ -522,20 +522,13 @@ const handleReceive = async (order) => {
 const doConfirmReceiveApi = async (order) => {
 	try {
 		order = await ensureOrderTransactionId(order)
-		const tid = String(order.transaction_id || order.transactionId || '').trim()
-		if (!tid) {
-			uni.showToast({
-				title: '该订单暂无支付流水号，无法确认收货。请联系商家或稍后再试。',
-				icon: 'none',
-				duration: 3000
-			})
-			return
-		}
+		// 与订单详情页一致：0 元订单可能无 transaction_id，仍调用确认收货接口，由后端处理
+		const tid = String(order.transaction_id ?? order.transactionId ?? '').trim()
 		uni.showLoading({ title: '处理中...', mask: true })
 		console.log('[订单列表] 确认收货，订单号:', order.orderNo)
 		await confirmReceive({
 			order_number: order.orderNo,
-			transaction_id: tid
+			transaction_id: tid || undefined
 		})
 		
 		// 立即切换到已完成标签
