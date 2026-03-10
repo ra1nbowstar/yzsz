@@ -189,7 +189,7 @@
 <script setup>
 import { ref, onUnmounted } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { getOrderList, confirmReceive } from '@/api/order.js'
+import { getOrderList, getOrderDetail, confirmReceive } from '@/api/order.js'
 import { getRefundProgress } from '../../api/refund.js'
 
 const tabs = ref([
@@ -489,6 +489,27 @@ const handlePay = (order) => {
 	uni.navigateTo({
 		url: `/subPackages/page1/pages/payment/payment?data=${encodeURIComponent(JSON.stringify(paymentData))}`
 	})
+}
+
+/**
+ * 若列表项没有 transaction_id，则拉取订单详情并补全后返回
+ */
+const ensureOrderTransactionId = async (order) => {
+	const tid = order.transaction_id ?? order.transactionId
+	if (tid != null && String(tid).trim() !== '') return order
+	const orderNo = order.orderNo || order.order_number
+	if (!orderNo) return order
+	try {
+		const res = await getOrderDetail(orderNo)
+		const detail = res?.data ?? res
+		const fromDetail = detail?.transaction_id ?? detail?.transactionId
+		if (fromDetail != null) {
+			return { ...order, transaction_id: fromDetail, transactionId: fromDetail }
+		}
+	} catch (e) {
+		console.warn('[订单列表] 拉取订单详情获取 transaction_id 失败:', e)
+	}
+	return order
 }
 
 /**

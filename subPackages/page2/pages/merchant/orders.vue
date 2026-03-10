@@ -283,7 +283,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getMerchantOrders, shipOrder as shipOrderApi, getDeliveryList, updateOrderStatus, setWechatDeliveryJumpPath } from '@/api/order.js'
 import { searchDeliveryList } from '@/data/delivery-list.js'
 import { approveRefund as approveRefundApi, rejectRefund as rejectRefundApi, auditRefund } from '../../api/refund.js'
@@ -1237,6 +1237,18 @@ const loadMore = async () => {
     loadingMore.value = false
   }
 }
+
+// 是否已完成首次展示（用于 onShow 时避免与 onMounted 重复请求）
+const hasShownOnce = ref(false)
+
+onShow(() => {
+  if (!hasShownOnce.value) {
+    hasShownOnce.value = true
+    return
+  }
+  // 从订单详情等子页返回时刷新列表，使「确认收货」后待收货页不再显示已完成订单
+  refreshOrders()
+})
 
 onMounted(() => {
   loadOrders()

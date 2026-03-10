@@ -1,24 +1,17 @@
-import { request } from '@/utils/request.js'
+import request from '@/utils/request.js'
 
 /**
  * 获取允许转正的资金池列表
  */
 export const getTransformAllowed = () => {
-  return request({
-    url: '/api/fund-pools/transform-allowed',
-    method: 'GET'
-  })
+  return request.get('/api/fund-pools/transform-allowed')
 }
 
 /**
  * 查询资金池转正操作明细
  */
 export const getTransformLogs = (params) => {
-  return request({
-    url: '/api/fund-pools/transform-logs',
-    method: 'GET',
-    data: params
-  })
+  return request.get('/api/fund-pools/transform-logs', params || {})
 }
 
 /**
@@ -34,8 +27,6 @@ export const transformToCoupon = (params) => {
   if (params.applicable_product_type != null) q.set('applicable_product_type', String(params.applicable_product_type))
   if (params.remark != null && params.remark !== '') q.set('remark', String(params.remark))
   const query = q.toString()
-  return request({
-    url: '/api/fund-pools/transform-to-coupon' + (query ? '?' + query : ''),
-    method: 'POST'
-  })
+  const url = '/api/fund-pools/transform-to-coupon' + (query ? '?' + query : '')
+  return request.post(url, {})
 }

@@ -299,14 +299,16 @@ const handlePayment = async () => {
 
       console.log('[微信支付] 成功获取 OpenID:', String(openid).substring(0, 10) + '...')
       const { couponId, pointsToUse } = getPaymentParams()
-      // 2. 调用后端API创建 JSAPI 订单，获取前端支付参数（传入优惠券与积分便于后端校验）
+      console.log('[微信支付] 当前订单优惠信息（仅日志，不再传给 create-order）:', {
+        couponId,
+        pointsToUse
+      })
+      // 2. 调用后端API创建 JSAPI 订单，获取前端支付参数（按文档不再传 coupon_id 与 points_to_use）
       const res = await createJsapiOrder({
         orderNo: paymentData.value.orderNo,
         amount: parseFloat(paymentData.value.amount),
         description: '商品购买',
-        openid: openid,
-        coupon_id: couponId || undefined,
-        points_to_use: pointsToUse || undefined
+        openid: openid
       })
       
       uni.hideLoading()

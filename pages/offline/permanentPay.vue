@@ -5,7 +5,7 @@
         <text class="iconfont icon-hongbao section-icon"></text>
         <text>扫码付款</text>
       </view>
-      <view class="tip">请输入支付金额，确认后将进入与线下支付相同的页面（可选优惠券、积分抵扣、微信支付）。</view>
+      <view class="tip">扫码付款：请输入支付金额，确认后进入支付页。支持优惠券，不支持积分抵扣。</view>
 
       <view v-if="!merchantId" class="error-tip">
         <text>无效的收款码，缺少商家信息。请重新扫描商户的永久收款码。</text>
@@ -68,13 +68,46 @@ function parseScene(scene) {
   return params
 }
 
+/** 从 URL 或 query 字符串中解析 id（如 https://hzai.tech/offline?id=27 或 id=27） */
+function parseIdFromUrlOrQuery(str) {
+  if (!str || typeof str !== 'string') return null
+  const s = str.trim()
+  let query = s
+  if (s.includes('?')) {
+    query = s.slice(s.indexOf('?') + 1)
+  } else if (s.startsWith('id=') || s.includes('&id=')) {
+    query = s
+  }
+  const params = {}
+  query.split('&').forEach((pair) => {
+    const [k, v] = pair.split('=')
+    if (k && v !== undefined) params[k.trim()] = v.trim()
+  })
+  return params.id ?? params.merchant_id ?? params.mid ?? params.m ?? null
+}
+
 onLoad((options) => {
   options = options || {}
-  let mid = options.merchant_id ?? options.mid
+  // 扫码进入带 id 参数时作为商家 id；也兼容 merchant_id / mid / scene、以及启动参数为完整 URL
+  let mid = options.id ?? options.merchant_id ?? options.mid
   if (mid == null || mid === '') {
-    const scene = options.scene || (options.query && options.query.scene)
-    const params = parseScene(scene)
-    mid = params.merchant_id ?? params.mid ?? params.m
+    const scene = options.scene || (options.query && options.query.scene) || options.q
+    mid = parseIdFromUrlOrQuery(scene)
+    if (mid == null || mid === '') {
+      const params = parseScene(scene)
+      mid = params.id ?? params.merchant_id ?? params.mid ?? params.m
+    }
+  }
+  if (mid == null || mid === '') {
+    for (const v of Object.values(options)) {
+      const s = String(v ?? '').trim()
+      if (!s) continue
+      const parsed = parseIdFromUrlOrQuery(s)
+      if (parsed != null && parsed !== '') {
+        mid = parsed
+        break
+      }
+    }
   }
   if (mid != null && mid !== '') {
     merchantId.value = parseInt(mid, 10)
@@ -107,7 +140,7 @@ async function goPay() {
       return
     }
     uni.redirectTo({
-      url: `/pages/offline/pay?orderNo=${encodeURIComponent(orderNo)}`
+      url: `/pages/offline/pay?orderNo=${encodeURIComponent(orderNo)}&noPoints=1`
     })
   } catch (e) {
     console.error('[永久收款-去支付] 创建订单失败', e)

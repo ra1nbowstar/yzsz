@@ -54,9 +54,10 @@
 				<text class="input-label">使用积分</text>
 				<input 
 					v-model.number="pointsToUse" 
-					type="number" 
+					type="digit"
 					class="points-input"
 					placeholder="0"
+					inputmode="decimal"
 					:disabled="userPoints === 0 || maxPointsDiscount === 0"
 					@input="onPointsInput"
 				/>

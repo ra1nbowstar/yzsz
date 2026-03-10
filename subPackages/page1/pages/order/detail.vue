@@ -117,7 +117,7 @@
 					</view>
 					<view class="calc-row" v-if="order.pointsDeduction > 0">
 						<text class="label">积分抵扣</text>
-						<text class="value red">-{{ format4Decimals(order.pointsDeduction) }}点</text>
+						<text class="value red">-¥{{ format4Decimals(order.pointsDeduction) }}</text>
 					</view>
 					<view class="calc-row total-row">
 						<text class="label">实付款</text>
@@ -483,7 +483,7 @@ const loadOrderDetail = async (orderNumber) => {
 			// 优先使用API返回的product_amount，如果没有则使用计算的商品总价，最后使用total_amount
 			productAmount: parseFloat(orderData.product_amount || orderData.productAmount || calculatedProductAmount || orderData.item_amount || 0),
 			couponAmount: parseFloat(orderData.coupon_amount || orderData.couponAmount || orderData.coupon_discount || orderData.couponDiscount || 0),
-			pointsDeduction: parseFloat(orderData.points_deduction || orderData.pointsDeduction || orderData.points_used || orderData.pointsUsed || 0),
+			pointsDeduction: parseFloat(orderData.points_discount ?? orderData.points_deduction ?? orderData.pointsDeduction ?? orderData.points_used ?? orderData.pointsUsed ?? 0),
 			shippingFee: parseFloat(orderData.shipping_fee || orderData.shippingFee || orderData.delivery_fee || orderData.deliveryFee || 0),
 			totalAmount: parseFloat(orderData.actual_amount || orderData.actualAmount || orderData.total_amount || orderData.totalAmount || 0),
 			// logistics 字段：优先使用后端返回的物流详情文本，如果没有则使用物流公司名称

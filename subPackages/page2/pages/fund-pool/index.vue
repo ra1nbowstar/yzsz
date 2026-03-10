@@ -268,20 +268,28 @@ const submitTransform = async () => {
     return
   }
   submittingTransform.value = true
+  const payload = {
+    pool_type: poolType,
+    user_id: Number(transformUserId.value),
+    amount: Number(transformFormAmount.value),
+    coupon_type: couponTypeOptions.value[couponTypeIndex.value].value,
+    applicable_product_type: applicableTypeOptions.value[applicableTypeIndex.value].value,
+    remark: transformRemark.value ? String(transformRemark.value).trim() : undefined
+  }
+  console.log('[我的资金] transformToCoupon 请求参数:', JSON.stringify(payload, null, 2))
   try {
-    await transformToCoupon({
-      pool_type: poolType,
-      user_id: Number(transformUserId.value),
-      amount: Number(transformFormAmount.value),
-      coupon_type: couponTypeOptions.value[couponTypeIndex.value].value,
-      applicable_product_type: applicableTypeOptions.value[applicableTypeIndex.value].value,
-      remark: transformRemark.value ? String(transformRemark.value).trim() : undefined
-    })
+    const res = await transformToCoupon(payload)
+    console.log('[我的资金] transformToCoupon 接口完整响应:', JSON.stringify(res, null, 2))
+    console.log('[我的资金] transformToCoupon res.data:', res?.data)
+    console.log('[我的资金] transformToCoupon res.success:', res?.success)
+    console.log('[我的资金] transformToCoupon res.message:', res?.message)
     uni.showToast({ title: '转正成功', icon: 'success' })
     transformFormAmount.value = ''
     transformRemark.value = ''
     loadFundList()
   } catch (err) {
+    console.error('[我的资金] transformToCoupon 请求失败:', err)
+    console.error('[我的资金] 错误详情:', err?.message, err?.data, err?.detail, err)
     uni.showToast({ title: err.message || err.msg || '转正失败', icon: 'none' })
   } finally {
     submittingTransform.value = false
@@ -293,10 +301,16 @@ const loadFundList = async () => {
   loading.value = true
   try {
     const res = await getTransformAllowed()
+    // 打印后端接口返回的完整数据
+    console.log('[我的资金] getTransformAllowed 接口完整响应:', JSON.stringify(res, null, 2))
+    console.log('[我的资金] res.data:', res?.data)
+    console.log('[我的资金] res.success:', res?.success)
+    console.log('[我的资金] res.message:', res?.message)
     let raw = res.data != null ? res.data : res
     if (!Array.isArray(raw)) {
       raw = typeof raw === 'object' ? Object.keys(raw).map(key => ({ type: key, ...(raw[key] || {}) })) : []
     }
+    console.log('[我的资金] 解析后的资金池列表 raw:', JSON.stringify(raw, null, 2))
     fundList.value = raw.map(item => {
       const type = item.type || item.pool_type || item.key
       return {
@@ -315,7 +329,11 @@ const loadFundList = async () => {
     if (fundList.value.length > 0 && transformPoolIndex.value >= fundList.value.length) {
       transformPoolIndex.value = 0
     }
+    console.log('[我的资金] 最终 fundList:', JSON.stringify(fundList.value, null, 2))
+    console.log('[我的资金] fundList.length:', fundList.value.length)
   } catch (err) {
+    console.error('[我的资金] getTransformAllowed 请求失败:', err)
+    console.error('[我的资金] 错误详情:', err?.message, err?.data, err)
     uni.showToast({ title: '加载失败', icon: 'none' })
   } finally {
     loading.value = false

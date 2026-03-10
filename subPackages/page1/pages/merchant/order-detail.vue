@@ -371,7 +371,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { updateOrderStatus, shipOrder as shipOrderApi, getDeliveryList, getOrderDetail, getWechatOrderStatus, confirmReceive } from '@/api/order.js'
+import { updateOrderStatus, shipOrder as shipOrderApi, getDeliveryList, getOrderDetail, confirmReceive } from '@/api/order.js'
 import { searchDeliveryList } from '@/data/delivery-list.js'
 import { auditRefund, getRefundProgress } from '../../api/refund.js'
 import config from '@/utils/config.js'
@@ -905,21 +905,17 @@ const doConfirmReceiveApi = async () => {
   const orderNo = order.value.orderNo || order.value.order_number || String(order.value.id)
   const transactionId = order.value.transaction_id || order.value.transactionId
   const transactionIdStr = transactionId != null ? String(transactionId).trim() : ''
-  if (!transactionIdStr || transactionIdStr === 'undefined' || transactionIdStr === 'null') {
-    uni.showToast({
-      title: '该订单缺少微信支付流水号，无法直接确认。请确保在真机微信中操作或让用户在小程序内确认收货。',
-      icon: 'none',
-      duration: 3500
-    })
-    return
-  }
   try {
     uni.showLoading({ title: '处理中...', mask: true })
-    console.log('[商户订单详情] 确认收货，订单号:', orderNo)
-    await confirmReceive({
-      order_number: orderNo,
-      transaction_id: transactionIdStr
-    })
+    console.log('[商户订单详情] 确认收货，订单号:', orderNo, '有流水号:', !!transactionIdStr)
+    if (transactionIdStr && transactionIdStr !== 'undefined' && transactionIdStr !== 'null') {
+      await confirmReceive({
+        order_number: orderNo,
+        transaction_id: transactionIdStr
+      })
+    } else {
+      await updateOrderStatus(orderNo, 'completed', '商户确认送达')
+    }
     order.value.status = 'completed'
     uni.hideLoading()
     uni.showToast({ title: '订单已完成', icon: 'success' })
@@ -928,19 +924,6 @@ const doConfirmReceiveApi = async () => {
     uni.hideLoading()
     console.error('[商户订单详情] 确认收货失败:', error)
     const errorMsg = error?.message || error?.msg || error?.errorMsg || '操作失败，请稍后重试'
-    const isWechatNotConfirmed = /微信端未确认|微信侧未确认|未知状态|transaction_id 不能为空/i.test(errorMsg)
-    if (isWechatNotConfirmed) {
-      uni.showModal({
-        title: '需先在微信内确认收货',
-        content: '请先在微信小程序内（订单列表或服务通知）点击「确认收货」完成操作。完成后再回到本页，点击「同步收货状态」更新订单。',
-        confirmText: '同步收货状态',
-        cancelText: '知道了',
-        success: (res) => {
-          if (res.confirm) doConfirmReceiveApi()
-        }
-      })
-      return
-    }
     uni.showToast({ title: errorMsg, icon: 'none', duration: 2000 })
   }
 }
@@ -1294,15 +1277,8 @@ const loadOrderDetail = async (orderNo) => {
       mch_id: orderData.merchant_id || orderData.mch_id || ''
     }
     
-    // 查询订单在微信小程序的发货状态（图4接口）
-    try {
-      const wechatRes = await getWechatOrderStatus(order.value.orderNo)
-      const statusMap = { 1: '待发货', 2: '已发货', 3: '确认收货', 4: '交易完成', 5: '已退款', 6: '资金待结算' }
-      const code = wechatRes.data?.status ?? wechatRes.status ?? wechatRes.data
-      wechatOrderStatus.value = statusMap[code] || (code != null ? `状态${code}` : '')
-    } catch (e) {
-      wechatOrderStatus.value = ''
-    }
+    // 仅使用后端订单状态，不再请求微信 order-status 接口（避免 404）
+    wechatOrderStatus.value = ''
     
     // 加载退款信息 - 检查多个可能的来源
     // 1. 优先从订单详情API返回的数据中获取

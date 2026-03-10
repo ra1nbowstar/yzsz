@@ -131,12 +131,6 @@ export const createJsapiOrder = (data) => {
     openid: data.openid,
     description: data.description || '商品支付'
   }
-  if (data.coupon_id != null && data.coupon_id !== '') {
-    payload.coupon_id = data.coupon_id
-  }
-  if (data.points_to_use != null && data.points_to_use > 0) {
-    payload.points_to_use = data.points_to_use
-  }
   console.log('[createJsapiOrder] 正常购物 -> POST /api/wechat-pay/create-order, payload:', payload)
   return request.post('/api/wechat-pay/create-order', payload)
 }
