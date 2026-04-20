@@ -1016,7 +1016,7 @@ onLoad((options) => {
 		currentTab.value = options.type
 	} else {
 		// 未传 type 时，保持默认的「待发货」
-		currentTab.value = 'paid'
+		currentTab.value = 'all'  // ✅ 与 data 中的默认值一致
 	}
 	
 	// 如果有refresh参数，说明是从支付页面跳转过来的
@@ -1084,6 +1084,7 @@ onShow(() => {
 					                loadOrderList()
 					                return
 					            }
+						const isUnknownState = /微信端未确认|微信侧未确认|未知状态/i.test(msg)		
 						if (isUnknownState && isRetry) {
 							uni.showModal({
 								title: '状态同步中',
@@ -1122,15 +1123,17 @@ onUnmounted(() => {
 
 <style scoped>
 .order-page {
-	min-height: 100vh;
-	background: #f5f5f5;
-	display: flex;
-	flex-direction: column;
+    height: 100vh;           /* 视口高度 */
+    background: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;        /* 防止外层滚动 */
 }
 
 .page-scroll {
-	flex: 1;
-	height: 100vh;
+    flex: 1;                 /* 填充剩余空间 */
+    height: auto;           /* 移除 100vh */
+    overflow-y: auto;       /* 确保可以滚动 */
 }
 
 /* 标签页 */

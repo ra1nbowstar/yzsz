@@ -376,6 +376,7 @@ import { searchDeliveryList } from '@/data/delivery-list.js'
 import { auditRefund, getRefundProgress } from '../../api/refund.js'
 import config from '@/utils/config.js'
 import { getProductDetail } from '@/api/product.js'
+import { normalizeRefundInfo, resolveMerchantOrderStatusForRefund } from '@/utils/merchantRefund.js'
 
 const orderNumber = ref('')
 
@@ -1247,10 +1248,20 @@ const loadOrderDetail = async (orderNo) => {
       addressText = address
     }
     
+    let mainOrderStatus = orderData.status ?? orderData.order_status ?? orderData.orderStatus ?? ''
+    if (mainOrderStatus !== '' && mainOrderStatus != null) {
+      mainOrderStatus = String(mainOrderStatus).toLowerCase().trim()
+    } else {
+      mainOrderStatus = ''
+    }
+    if (mainOrderStatus === 'paid' || mainOrderStatus === 'confirmed') {
+      mainOrderStatus = 'pending_ship'
+    }
+
     order.value = {
       id: orderData.id,
       orderNo: orderData.order_number || orderData.order_no || orderData.orderNo || String(orderData.id),
-      status: orderData.status || '',
+      status: mainOrderStatus,
       customerName: customerName,
       customerPhone: customerPhone,
       deliveryAddress: addressText,
@@ -1300,8 +1311,11 @@ const loadOrderDetail = async (orderNo) => {
       console.log('[商户订单详情] 从响应根对象中获取到退款信息:', refundData)
     }
     
-    // 2. 如果订单状态是退款中，且没有从订单详情中获取到，则单独调用退款进度接口
-    if ((order.value.status === 'refunding' || orderData.refund_status) && !refundData) {
+    // 2. 若詳情未帶 refund 物件，但存在退款語意（線下單常僅根欄位），拉退款進度
+    const hasRefundHint =
+      Boolean(orderData.refund_status || orderData.refundStatus || orderData.refund_reason || orderData.refundReason) ||
+      order.value.status === 'refunding'
+    if (hasRefundHint && !refundData) {
       try {
         const refundRes = await getRefundProgress(order.value.orderNo)
         refundData = refundRes.data || refundRes
@@ -1312,22 +1326,13 @@ const loadOrderDetail = async (orderNo) => {
       }
     }
     
-    // 设置退款信息
-    if (refundData) {
-      // 处理不同的数据格式
-      refundInfo.value = {
-        status: refundData.status || refundData.refund_status || 'pending',
-        refund_type: refundData.refund_type || refundData.type || refundData.refundType,
-        reason_code: refundData.reason_code || refundData.reason || refundData.reasonCode || refundData.description,
-        reject_reason: refundData.reject_reason || refundData.rejectReason || refundData.reject_reason_text,
-        created_at: refundData.created_at || refundData.create_time || refundData.createdAt || refundData.apply_time,
-        amount: refundData.amount || refundData.refund_amount || refundData.refundAmount,
-        remark: refundData.remark || refundData.note || refundData.description
-      }
+    // 设置退款信息（歸一化：合併根級 refund_status / 缺省 status，與平台訂單列表一致）
+    refundInfo.value = normalizeRefundInfo(refundData, orderData)
+    if (refundInfo.value) {
       console.log('[商户订单详情] 处理后的退款信息:', refundInfo.value)
-    } else {
-      refundInfo.value = null
     }
+
+    order.value.status = resolveMerchantOrderStatusForRefund(order.value.status, refundInfo.value)
     
     uni.hideLoading()
     console.log('[商户订单详情] 加载完成:', order.value)

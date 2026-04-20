@@ -26,21 +26,27 @@
       :refresher-triggered="refreshing"
       @refresherrefresh="onRefresh"
     >
-      <view 
-        v-for="item in records" 
-        :key="item.id"
-        class="record-item"
-      >
+      <view class="record-item" v-for="item in records" :key="item.id">
         <view class="record-header">
           <text class="fund-type">{{ getFundName(item.pool_type || item.fund_type || item.type) }}</text>
           <text class="record-amount">-¥{{ formatAmount(item.amount) }}</text>
         </view>
-        
-        <view class="record-detail">
-          <text class="coupon-info">生成优惠券：¥{{ formatAmount(item.coupon_amount) }}</text>
-          <text class="record-time">{{ formatTime(item.created_at) }}</text>
+      
+        <!-- 仅显示时间 -->
+        <view class="record-time">{{ formatTime(item.created_at) }}</view>
+      
+        <!-- 新增的用户和余额信息（保持不变） -->
+        <view class="record-extra" v-if="item.user_name || item.pre_balance !== undefined || item.balance_after !== undefined">
+          <view class="extra-row" v-if="item.user_name">
+            <text class="extra-label">发放用户：</text>
+            <text class="extra-value">{{ item.user_name }}</text>
+          </view>
+          <view class="extra-row balance-row" v-if="item.pre_balance !== undefined || item.balance_after !== undefined">
+            <text class="extra-label">发前余额：<text class="extra-value">{{ formatPreBalance(item.pre_balance) }}</text></text>
+            <text class="extra-label">发后余额：<text class="extra-value">{{ formatAmount(item.balance_after) }}</text></text>
+          </view>
         </view>
-        
+      
         <view class="record-status" :class="item.status">
           <text>{{ getStatusText(item.status) }}</text>
         </view>
@@ -171,6 +177,7 @@ const loadRecords = async (isRefresh = false) => {
     // “全部资金池”时不要传 pool_type（传空字符串会被后端当成过滤条件）
     if (poolType) params.pool_type = poolType
     const res = await getTransformLogs(params)
+	console.log('接口原始响应:', JSON.stringify(res, null, 2))	
     const data = res && (res.data != null ? res.data : res)
     const list =
       (data && (data.rows || data.list || data.records)) ||
@@ -178,7 +185,7 @@ const loadRecords = async (isRefresh = false) => {
       res?.list ||
       []
     const arr = Array.isArray(list) ? list : []
-    
+    console.log('第一条记录:', arr[0])   // 查看实际返回的 pre_balance 和 balance_after 值
     if (isRefresh) {
       records.value = arr
     } else {
@@ -217,6 +224,10 @@ const onPoolChange = (e) => {
   noMore.value = false
   records.value = []
   loadRecords(true)
+}
+const formatPreBalance = (val) => {
+  if (val === undefined || val === null) return '--';
+  return '¥' + Number(val).toFixed(2);
 }
 
 onLoad(() => {
@@ -326,6 +337,7 @@ onLoad(() => {
 .record-time {
   font-size: 24rpx;
   color: #999;
+  margin-bottom: 16rpx;
 }
 
 .record-status {
@@ -372,5 +384,30 @@ onLoad(() => {
 .empty-text {
   font-size: 28rpx;
   color: #999;
+}
+.record-extra {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed #eee;
+  font-size: 24rpx;
+  color: #666;
+}
+.extra-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+.extra-label {
+  color: #999;
+  margin-right: 8rpx;
+}
+.extra-value {
+  color: #333;
+}
+.balance-row {
+  justify-content: space-between;
+}
+.balance-row .extra-label {
+  color: #666;  /* 余额标签颜色稍深，与用户信息区分 */
 }
 </style>

@@ -591,6 +591,12 @@
 				          }
 				        },
 				{
+				  "path": "pages/merchant/batch-coupon",
+				  "style": {
+				    "navigationBarTitleText": "批量发放优惠券"
+				  }
+				},		
+				{
 				          "path": "pages/merchant/create_platform_payment",
 				          "style": {
 				            "navigationBarTitleText": "平台收款"

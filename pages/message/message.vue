@@ -86,6 +86,7 @@ import { onLoad, onShow, onHide } from '@dcloudio/uni-app'
 import { setTabBarBadge, removeTabBarBadge } from '@/utils/tabbar.js'
 import { getMessageList, markAsRead, markAllAsRead, getUnreadCount } from '@/api/message.js'
 import { getSystemSentences } from '@/api/system.js'
+import { getExpiringCoupons } from '@/api/coupon.js'
 
 // 从本地存储加载保存的状态
 const loadCategoryStates = () => {
@@ -111,10 +112,17 @@ const loadDeletedCategories = () => {
 }
 
 // 消息分类列表
+// 消息分类列表
 const savedStates = loadCategoryStates()
-const deletedCategories = loadDeletedCategories()
+// 只声明一次 now（在最后使用，但需要在使用前定义，所以放在这里）
 const now = Date.now()
 
+let deletedCategories = loadDeletedCategories()   // 改用 let 以便修改
+// 清理历史遗留的 coupon_expiring 删除记录
+if (deletedCategories.includes('coupon_expiring')) {
+    deletedCategories = deletedCategories.filter(t => t !== 'coupon_expiring')
+    uni.setStorageSync('deletedMessageCategories', deletedCategories)
+}
 // 初始化消息分类（排除已删除的）
 const initMessageCategories = () => {
 	const allCategories = [
@@ -450,47 +458,82 @@ const viewCategoryMessages = (category) => {
 		return
 	}
 	
-	// 跳转到该类型的消息列表页面（分类页面位于分包 page1）
-	uni.navigateTo({ 
-		url: `/subPackages/page1/pages/message/category-list?type=${category.type}&title=${encodeURIComponent(category.title)}` 
-	})
+	if (category.type === 'system') {
+	    const systemCat = messageCategories.value.find(c => c.type === 'system')
+	    // 如果有过期优惠券（unreadCount > 0），跳转到优惠券列表（可筛选即将过期的）
+	    if (systemCat && systemCat.unreadCount > 0) {
+	        // 路径请根据你的项目实际优惠券列表页地址修改
+	        uni.navigateTo({ 
+	            url: '/subPackages/page1/pages/coupon/list?filter=expiring'
+	        })
+	    } else {
+	        // 否则跳转到系统通知列表页
+	        uni.navigateTo({ 
+	            url: `/subPackages/page1/pages/message/category-list?type=system&title=${encodeURIComponent(category.title)}` 
+	        })
+	    }
+	    return
+	}
 }
 
 /**
- * 加载系统通知内容
+ * 格式化日期为 YYYY-MM-DD
+ */
+function formatDate(dateStr) {
+    if (!dateStr) return ''
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return ''
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
+/**
+ * 加载系统通知（包含过期优惠券提醒）
  */
 const loadSystemNotice = async () => {
-	try {
-		const res = await getSystemSentences()
-		console.log('[消息页面] 系统通知API响应:', res)
-		
-		// 解析响应数据
-		const data = res.data || res
-		const systemSentence = data.system_sentence || data.systemSentence || ''
-		
-		if (systemSentence && systemSentence.trim()) {
-			// 系统通知直接使用内容，不再区分标题和内容
-			const content = systemSentence.trim()
-			
-			// 更新系统通知分类的显示
-			const systemCategory = messageCategories.value.find(cat => cat.type === 'system')
-			if (systemCategory) {
-				systemCategory.lastMessage = content
-				systemCategory.lastTimeStamp = Date.now()
-				systemCategory.lastTime = formatTime(new Date())
-			}
-		} else {
-			// 如果没有系统通知，清空显示
-			const systemCategory = messageCategories.value.find(cat => cat.type === 'system')
-			if (systemCategory) {
-				systemCategory.lastMessage = '暂无系统通知'
-				systemCategory.lastTimeStamp = 0
-				systemCategory.lastTime = ''
-			}
-		}
-	} catch (error) {
-		console.error('[消息页面] 加载系统通知失败', error)
-	}
+    try {
+        // 1. 获取系统句子
+        const sysRes = await getSystemSentences()
+        const sysData = sysRes.data || sysRes
+        let systemSentence = sysData.system_sentence || sysData.systemSentence || ''
+        
+        // 2. 获取即将过期的优惠券（默认3天）
+        let expiringCoupons = []
+        let expiringCount = 0
+        try {
+            const couponRes = await getExpiringCoupons(3)
+            const couponData = couponRes.data || couponRes
+            expiringCoupons = couponData.data || []
+            expiringCount = expiringCoupons.length
+        } catch (err) {
+            console.error('获取过期优惠券失败', err)
+        }
+        
+        // 3. 构建最终展示内容
+        let finalContent = systemSentence.trim()
+        if (expiringCount > 0) {
+            // 找出最早过期的优惠券
+            const earliest = expiringCoupons.sort((a, b) => new Date(a.expire_time) - new Date(b.expire_time))[0]
+            const expireMsg = `您有 ${expiringCount} 张优惠券即将过期，最早到期 ${formatDate(earliest.expire_time)}`
+            finalContent = finalContent ? `${finalContent}\n\n${expireMsg}` : expireMsg
+        } else {
+            if (!finalContent) finalContent = '暂无系统通知'
+        }
+        
+        // 4. 更新系统通知分类
+        const systemCategory = messageCategories.value.find(cat => cat.type === 'system')
+        if (systemCategory) {
+            systemCategory.lastMessage = finalContent
+            systemCategory.lastTimeStamp = Date.now()
+            systemCategory.lastTime = formatTime(new Date())
+            // 将过期优惠券数量作为未读数量（也可根据需求调整）
+            systemCategory.unreadCount = expiringCount
+        }
+    } catch (error) {
+        console.error('加载系统通知失败', error)
+    }
 }
 
 /**
@@ -554,10 +597,8 @@ const updateCategoryUnreadCount = () => {
 		
 		// 系统通知分类特殊处理：不从本地消息列表获取，使用API数据
 		if (category.type === 'system') {
-			// 系统通知的显示已经在 loadSystemNotice 中更新，这里不需要再处理
-			// 未读数设为0（系统通知不计算未读数）
-			category.unreadCount = 0
-			return
+		    // 系统通知的未读数由 loadSystemNotice 管理，这里不处理
+		    return
 		}
 		
 		// 统计未读数
@@ -676,6 +717,7 @@ onHide(() => {
 	// 页面隐藏时关闭所有滑动菜单
 	closeAllSwipes()
 })
+
 </script>
 
 <style scoped>

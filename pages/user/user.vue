@@ -85,15 +85,6 @@
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
-			<view class="menu-item" @tap="scanToPay">
-				<view class="menu-left">
-					<text class="iconfont icon-xiangji menu-icon"></text>
-					<text class="menu-text">扫码付款</text>
-				</view>
-				<view class="menu-right">
-					<text class="menu-arrow">›</text>
-				</view>
-			</view>
 			<view class="menu-item" @tap="goToPage('/subPackages/page2/pages/user/coupons')">
 				<view class="menu-left">
 					<text class="menu-icon iconfont icon-youhuijuan"></text>
@@ -351,7 +342,7 @@ const loadCouponCount = async () => {
 		const userId = storedUserInfo.id || storedUserInfo.user_id
 		if (!userId) { couponCount.value = 0; return }
 
-		const res = await getMyCoupons({ user_id: userId, status: 'all', page: 1, page_size: 200 })
+		const res = await getMyCoupons({ user_id: userId, status: 'all', page: 1, page_size: 99999 })
 		const list = res.data?.coupons || res.coupons || res.data || res || []
 		const now = Date.now()
 		const validCoupons = (Array.isArray(list) ? list : []).filter(coupon => {

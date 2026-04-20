@@ -113,6 +113,11 @@
 	    <text class="func-icon iconfont icon-tixian" style="color: #ff6b00;"></text>
 	    <text class="func-text">资金池使用</text>
 	  </view>
+	  <view class="func-card" @tap="openExportDialog">
+	    <!-- 使用 icon-xiaoshoutongji 类 -->
+	    <text class="func-icon iconfont icon-xiaoshoutongji"></text>
+	    <text class="func-text">报表导出</text>
+	  </view>
     </view>
 
 
@@ -151,20 +156,46 @@
     </view>
 
     <!-- 平台模式入口（切换到用户模式） -->
-    <view class="merchant-entrance">
-      <view class="merchant-btn switch-user" @tap="switchToUserMode">
-        <text class="merchant-text">切换到用户模式</text>
-      </view>
-    </view>
-  </view>
-</template>
+        <view class="merchant-entrance">
+          <view class="merchant-btn switch-user" @tap="switchToUserMode">
+            <text class="merchant-text">切换到用户模式</text>
+          </view>
+        </view>
+    
+        <!-- 报表导出弹窗 -->
+        <view class="export-dialog-mask" v-if="showExportDialog" @tap="closeExportDialog">
+          <view class="export-dialog" @tap.stop>
+            <view class="dialog-title">导出报表</view>
+            <view class="dialog-item">
+              <text class="item-label">开始日期</text>
+              <picker mode="date" :value="startDate" @change="onStartDateChange">
+                <view class="item-value">{{ startDate || '请选择' }}</view>
+              </picker>
+            </view>
+            <view class="dialog-item">
+              <text class="item-label">结束日期</text>
+              <picker mode="date" :value="endDate" @change="onEndDateChange">
+                <view class="item-value">{{ endDate || '请选择' }}</view>
+              </picker>
+            </view>
+            <view class="dialog-item">
+              <text class="item-label">包含明细</text>
+              <checkbox :checked="includeDetail" @tap="toggleIncludeDetail" />
+            </view>
+            <view class="dialog-buttons">
+              <button class="cancel-btn" @tap="closeExportDialog">取消</button>
+              <button class="confirm-btn" @tap="confirmExport">确认导出</button>
+            </view>
+          </view>
+        </view>
+      </view> 
+    </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getOrderList, getAllOrders } from '@/api/order.js'
+import { getOrderList, getAllOrders, exportDailySummary} from '@/api/order.js'
 import { getCompanyPointsBalance, getPlatformRevenueBalance } from '../../api/finance.js'
-
 // 商家信息
 const merchantInfo = ref({
   shopName: '示例商店',
@@ -476,6 +507,93 @@ const refreshMerchantDashboard = async () => {
 const clearNotifications = () => {
   notifications.value = []
 }
+
+const showExportDialog = ref(false)
+const startDate = ref('')
+const endDate = ref('')
+const includeDetail = ref(true)
+// 打开弹窗
+const openExportDialog = () => {
+  // 设置默认日期范围（最近30天）
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - 30)
+  startDate.value = start.toISOString().slice(0, 10)
+  endDate.value = end.toISOString().slice(0, 10)
+  includeDetail.value = true
+  showExportDialog.value = true
+}
+
+// 关闭弹窗
+const closeExportDialog = () => {
+  showExportDialog.value = false
+}
+
+// 日期选择器回调
+const onStartDateChange = (e) => {
+  startDate.value = e.detail.value
+}
+const onEndDateChange = (e) => {
+  endDate.value = e.detail.value
+}
+
+// 切换“包含明细”复选框
+const toggleIncludeDetail = () => {
+  includeDetail.value = !includeDetail.value
+}
+
+// 确认导出
+const confirmExport = async () => {
+  if (!startDate.value || !endDate.value) {
+    uni.showToast({ title: '请选择起止日期', icon: 'none' })
+    return
+  }
+  if (startDate.value > endDate.value) {
+    uni.showToast({ title: '开始日期不能晚于结束日期', icon: 'none' })
+    return
+  }
+
+  uni.showLoading({ title: '生成报表中...', mask: true })
+  try {
+    const data = await exportDailySummary({
+      start_date: startDate.value,
+      end_date: endDate.value,
+      include_detail: includeDetail.value
+    })
+
+    // 保存文件
+    const filePath = `${uni.env.USER_DATA_PATH}/daily_summary.xlsx`
+    const fs = uni.getFileSystemManager()
+    fs.writeFile({
+      filePath,
+      data,
+      success: () => {
+        uni.hideLoading()
+        uni.openDocument({
+          filePath,
+          success: () => {
+            console.log('打开文档成功')
+          },
+          fail: (err) => {
+            console.error('打开文档失败', err)
+            uni.showToast({ title: '打开失败，请检查文件', icon: 'none' })
+          }
+        })
+      },
+      fail: (err) => {
+        uni.hideLoading()
+        console.error('保存文件失败', err)
+        uni.showToast({ title: '保存文件失败', icon: 'none' })
+      }
+    })
+  } catch (error) {
+    uni.hideLoading()
+    uni.showToast({ title: error || '导出失败', icon: 'none' })
+  } finally {
+    closeExportDialog()
+  }
+}
+
 function openBindCard() {
 	console.log('api代码为调用，跳转到 银行卡绑定 页面，前端运行正常')
 	uni.navigateTo({ url: '/subPackages/page2/pages/merchant/bindcard' })
@@ -901,6 +1019,137 @@ onShow(() => {
 }
 .merchant-btn.switch-user { justify-content: center; }
 
+/* 报表导出弹窗样式 */
+.export-dialog-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.export-dialog {
+  width: 600rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 40rpx;
+}
+.dialog-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 40rpx;
+}
+.dialog-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30rpx;
+}
+.item-label {
+  font-size: 28rpx;
+  color: #666;
+}
+.item-value {
+  font-size: 28rpx;
+  color: #333;
+  padding: 10rpx 20rpx;
+  border: 1rpx solid #ddd;
+  border-radius: 8rpx;
+}
+.dialog-buttons {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 40rpx;
+}
+.cancel-btn, .confirm-btn {
+  flex: 1;
+  height: 80rpx;
+  line-height: 80rpx;
+  font-size: 28rpx;
+  border-radius: 40rpx;
+}
+.cancel-btn {
+  background: #f5f5f5;
+  color: #666;
+}
+.confirm-btn {
+  background: #ff9800;
+  color: #fff;
+}
+/* 发放优惠券弹窗 */
+.coupon-dialog-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.coupon-dialog {
+  width: 560rpx;   /* 比原报表弹窗稍宽，可按需调整 */
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 48rpx 40rpx;
+}
+.dialog-title {
+  font-size: 36rpx;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 48rpx;
+}
+.dialog-item {
+  margin-bottom: 24rpx;
+}
+.item-label {
+  display: block;
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 16rpx;
+}
+.item-input {
+  width: 100%;
+  height: 80rpx;
+  border: 1rpx solid #ddd;
+  border-radius: 12rpx;
+  padding: 0 20rpx;
+  font-size: 32rpx;
+  box-sizing: border-box;
+}
+.dialog-tip {
+  font-size: 24rpx;
+  color: #ff9800;
+  margin-bottom: 32rpx;
+}
+.dialog-buttons {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 16rpx;
+}
+.cancel-btn, .confirm-btn {
+  flex: 1;
+  height: 80rpx;
+  line-height: 80rpx;
+  font-size: 28rpx;
+  border-radius: 40rpx;
+  border: none;
+}
+.cancel-btn {
+  background: #f5f5f5;
+  color: #666;
+}
+.confirm-btn {
+  background: #ff9800;
+  color: #fff;
+}
 </style>
 
 <style>

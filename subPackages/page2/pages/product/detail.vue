@@ -1204,11 +1204,13 @@ const buyNow = async () => {
 			productType: product.value.productType || 'normal',
 			max_points_discount: product.value.maxPointsDeduction || product.value.max_points_discount || 0,
 			maxPointsDeduction: product.value.maxPointsDeduction || product.value.max_points_discount || 0,
+			cash_only: product.value.cash_only, // 新增：传递现金标识
 			sku: skuCode || '',
 			specs: selectedSpecs.value || {},
 			specifications: Object.keys(specifications).length > 0 ? specifications : undefined
 		}
-		
+		// 添加日志，查看传递给订单确认页的 cash_only 值
+		console.log('[立即购买] currentProduct.cash_only:', currentProduct.cash_only);
 		const orderData = {
 			items: [currentProduct], // 确保只有一个商品
 			source: 'direct' // 立即购买是直接购买，不是从购物车结算
@@ -1249,7 +1251,6 @@ const buyNow = async () => {
 const loadProductDetail = async (id) => {
 	try {
 		uni.showLoading({ title: '加载中...' })
-		
 		// 调用API获取商品详情（轮播图接口不存在，从商品详情接口获取）
 		const [detailRes, salesRes, rulesRes] = await Promise.allSettled([
 			getProductDetail(id),
@@ -1332,7 +1333,8 @@ const loadProductDetail = async (id) => {
 			}
 			
 			rawProductData.value = productData // 保存原始数据，用于规格选择时匹配 SKU
-			
+			console.log('[商品详情] 接口返回的 cash_only 原始值:', productData.cash_only); // ← 添加这一行
+
 			// 处理价格：计算所有 SKU 中的最低价格和最低原价
 			let price = 0
 			let originPrice = null
@@ -1733,6 +1735,7 @@ const loadProductDetail = async (id) => {
 				buy_rule: productData.buy_rule || productData.buyRule || '', // 同时保存两种字段名，确保显示
 				freight: parseFloat(productData.freight || 0),
 				maxPointsDeduction: parseFloat(productData.max_points_discount || 0), // 积分抵扣上限（从接口获取）
+				cash_only: productData.cash_only, // 新增：仅限现金支付标识
 				user_id: productData.user_id || null // 保存商品所属用户的ID
 			}
 			

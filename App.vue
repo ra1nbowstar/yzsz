@@ -176,26 +176,38 @@
 			}
 			const appId = refInfo && (refInfo.appId || refInfo.appid)
 			if (appId === 'wx1183b055aeec94d1') {
-				const extraData = refInfo.extraData || {}
-				const { status, errormsg, req_extradata } = extraData
-				const req = req_extradata || {}
-				const orderNo = req.merchant_trade_no || req.transaction_id
-				const transactionId = req.transaction_id || null
-				console.log('[App.onShow] 确认收货组件回调', { status, orderNo, transactionId })
-				if (status === 'success' && orderNo) {
-					uni.removeStorageSync('pending_confirm_receive')
-					// 传 transaction_id 便于后端做微信订单发货状态二次校验
-					confirmReceive({ order_number: orderNo, transaction_id: transactionId }).then(() => {
-						uni.showToast({ title: '收货已同步', icon: 'success' })
-					}).catch((err) => {
-						console.warn('[App.onShow] 确认收货同步失败', err)
-						uni.showToast({ title: (err && (err.message || err.msg)) || '同步失败', icon: 'none' })
-					})
-					return
-				}
-				if (status === 'fail') {
-					console.error('[App.onShow] 确认收货失败', errormsg)
-				}
+			    const extraData = refInfo.extraData || {}
+			    const { status, errormsg, req_extradata } = extraData
+			    const req = req_extradata || {}
+			    const orderNo = req.merchant_trade_no || req.transaction_id
+			    const transactionId = req.transaction_id || null
+			    console.log('[App.onShow] 确认收货组件回调', { status, orderNo, transactionId })
+			    if (status === 'success' && orderNo) {
+			        // 存储缓存，让订单详情页的 onShow 去同步
+			        const pending = {
+			            orderNo: orderNo,
+			            transactionId: transactionId,
+			            at: Date.now()
+			        }
+			        uni.setStorageSync('pending_confirm_receive', JSON.stringify(pending))
+			        // 如果当前页面是订单详情页，主动触发其 onShow
+			        const pages = getCurrentPages()
+			        const currentPage = pages[pages.length - 1]
+			        if (currentPage && currentPage.route && currentPage.route.includes('order/detail')) {
+			            setTimeout(() => {
+			                currentPage.onShow && currentPage.onShow()
+			            }, 300)
+			        }
+			        uni.showToast({ title: '确认收货成功，正在同步', icon: 'none' })
+			        return
+			    }
+			    if (status === 'fail') {
+			        console.error('[App.onShow] 确认收货失败', errormsg)
+			        uni.showToast({ title: errormsg || '确认收货失败', icon: 'none' })
+			    }
+			    if (status === 'cancel') {
+			        console.log('[App.onShow] 用户取消确认收货')
+			    }
 			}
 
 			// App Show - 小程序从后台切回前台时也会触发，可能携带新的 scene 参数

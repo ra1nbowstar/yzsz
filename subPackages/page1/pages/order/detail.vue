@@ -223,11 +223,11 @@
 				</button>
 				<!-- 待售后订单：查询退款进度 -->
 				<button 
-					class="btn secondary" 
-					v-if="order.status === 'refunding' || order.status === 'refunded'" 
-					@tap="checkRefundProgress"
+				  class="btn secondary" 
+				  v-if="refundInfo && refundInfo.status" 
+				  @tap="checkRefundProgress"
 				>
-					查询退款进度
+				  查询退款进度
 				</button>
 			</view>
 		</view>
@@ -427,28 +427,37 @@ const loadOrderDetail = async (orderNumber) => {
 			}, 0)
 		}
 		
-		// 退款中/已退款/已完成且有退款信息时，仅预加载退款数据供页面展示，不自动打开退款进度弹窗（弹窗仅由用户点击「查询退款进度」打开）
-		const hasRefundInfo = orderData.refund_reason || orderData.refundReason || orderData.refund_status || orderData.refundStatus
-		if (orderData.status === 'refunding' || orderData.status === 'refunded' || (orderData.status === 'completed' && hasRefundInfo)) {
-			try {
-				const refundResult = await getRefundProgress(orderData.order_no || orderData.orderNo || orderData.order_number)
-				refundInfo.value = refundResult.data || refundResult
-				console.log('[订单详情] 退款信息已加载:', refundInfo.value)
-			} catch (refundError) {
-				console.error('[订单详情] 查询退款进度失败:', refundError)
-				// 如果查询失败，但订单数据中有退款信息，使用订单数据中的退款信息
-				if (hasRefundInfo) {
-					refundInfo.value = {
-						status: orderData.refund_status || orderData.refundStatus || null,
-						reason_code: orderData.refund_reason || orderData.refundReason || null
-					}
-					console.log('[订单详情] 使用订单数据中的退款信息:', refundInfo.value)
-				} else {
-					refundInfo.value = null
-				}
-			}
+		// 优先使用订单详情中返回的退款信息（如果有）
+		if (orderData.refund_info) {
+		    refundInfo.value = orderData.refund_info;
+		    console.log('[订单详情] 从订单数据中获取退款信息:', refundInfo.value);
+		} else if (orderData.refund || orderData.refundInfo) {
+		    refundInfo.value = orderData.refund || orderData.refundInfo;
+		    console.log('[订单详情] 从订单数据中获取退款信息:', refundInfo.value);
 		} else {
-			refundInfo.value = null
+		    // 如果订单数据中没有退款信息，再根据状态决定是否主动查询
+		    const hasRefundInfo = orderData.refund_reason || orderData.refundReason || orderData.refund_status || orderData.refundStatus;
+		    if (orderData.status === 'refunding' || orderData.status === 'refunded' || (orderData.status === 'completed' && hasRefundInfo)) {
+		        try {
+		            const refundResult = await getRefundProgress(orderData.order_no || orderData.orderNo || orderData.order_number);
+		            refundInfo.value = refundResult.data || refundResult;
+		            console.log('[订单详情] 通过接口查询到退款信息:', refundInfo.value);
+		        } catch (refundError) {
+		            console.error('[订单详情] 查询退款进度失败:', refundError);
+		            // 如果查询失败，但订单数据中有退款信息，使用订单数据中的退款信息
+		            if (hasRefundInfo) {
+		                refundInfo.value = {
+		                    status: orderData.refund_status || orderData.refundStatus || null,
+		                    reason_code: orderData.refund_reason || orderData.refundReason || null
+		                };
+		                console.log('[订单详情] 使用订单数据中的退款信息:', refundInfo.value);
+		            } else {
+		                refundInfo.value = null;
+		            }
+		        }
+		    } else {
+		        refundInfo.value = null;
+		    }
 		}
 		
 		// 计算订单创建时间戳
@@ -881,9 +890,77 @@ const handlePay = () => {
 	uni.showToast({ title: '跳转支付...', icon: 'loading' })
 }
 
-/** 确认收货（仅调后端接口，不调起微信官方组件） */
+/** 确认收货：自提或非微信支付时走原后端接口，否则调起微信官方组件 */
 const handleReceive = () => {
-	doConfirmReceive()
+  // 自提订单：直接调用后端确认收货接口
+  if (order.value.deliveryWay === 'pickup') {
+    doConfirmReceive()
+    return
+  }
+
+  // 商家配送订单，需要微信官方确认收货
+  // 检查是否有微信交易信息（用于官方组件）
+  const hasWechatInfo = !!(order.value.transaction_id || (order.value.merchant_id && order.value.merchant_trade_no))
+  if (hasWechatInfo) {
+    confirmReceiptWithOfficialComponent()
+  } else {
+    // 没有微信信息则回退到原接口（或提示用户）
+    uni.showModal({
+      title: '提示',
+      content: '当前订单暂不支持微信官方确认收货，请联系客服',
+      showCancel: false
+    })
+  }
+}
+
+/** 调起微信官方确认收货组件 */
+const confirmReceiptWithOfficialComponent = () => {
+  // 检查基础库版本（2.6.0 以上才支持）
+  const { SDKVersion, platform } = uni.getSystemInfoSync()
+  const version = SDKVersion.split('.').map(Number)
+  if (version[0] < 2 || (version[0] === 2 && version[1] < 6)) {
+    uni.showModal({
+      title: '提示',
+      content: '当前微信版本过低，请升级后重试',
+      showCancel: false
+    })
+    return
+  }
+
+  // 构建 extraData 参数
+  const extraData = {}
+  if (order.value.transaction_id) {
+    extraData.transaction_id = order.value.transaction_id
+  } else if (order.value.merchant_id && order.value.merchant_trade_no) {
+    extraData.merchant_id = order.value.merchant_id
+    extraData.merchant_trade_no = order.value.merchant_trade_no
+  } else {
+    uni.showToast({ title: '订单信息不全，无法确认收货', icon: 'none' })
+    return
+  }
+
+  // 调用官方组件
+  // @ts-ignore
+  wx.openBusinessView({
+    businessType: 'weappOrderConfirm',
+    extraData,
+    success: (res) => {
+      console.log('[官方组件] 拉起成功', res)
+      // 存储待同步的订单信息，用于 onShow 兜底
+      const pending = {
+        orderNo: order.value.orderNo,
+        transactionId: order.value.transaction_id || extraData.transaction_id,
+        at: Date.now()
+      }
+      uni.setStorageSync('pending_confirm_receive', JSON.stringify(pending))
+      // 提示用户去微信内操作
+      uni.showToast({ title: '请在微信内确认收货', icon: 'none', duration: 2000 })
+    },
+    fail: (err) => {
+      console.error('[官方组件] 拉起失败', err)
+      uni.showToast({ title: '拉起失败，请稍后重试', icon: 'none' })
+    }
+  })
 }
 
 /**
@@ -1043,32 +1120,26 @@ const goToEvaluation = () => {
  * 检查是否可以申请退款
  */
 const canApplyRefund = () => {
-	// 待发货和待收货状态可以申请
-	if (order.value.status === 'pending_ship' || order.value.status === 'pending_recv') {
-		return true
-	}
-	
-	// 已完成状态需要检查条件
-	if (order.value.status === 'completed') {
-		// 1. 检查是否已经申请过退款（如果 refundStatus 不为空，说明已经申请过）
-		if (order.value.refundStatus || (refundInfo.value && refundInfo.value.status)) {
-			return false // 已经申请过退款，不能再次申请
-		}
-		
-		// 2. 检查订单创建时间是否超过15天
-		if (order.value.createTimeStamp > 0) {
-			const now = Date.now()
-			const daysDiff = (now - order.value.createTimeStamp) / (1000 * 60 * 60 * 24) // 转换为天数
-			if (daysDiff > 15) {
-				return false // 超过15天，不能申请退款
-			}
-		}
-		
-		// 15天内且未申请过退款，可以申请
-		return true
-	}
-	
-	return false
+  // 如果已有退款信息且状态不是拒绝，则不可申请
+  if (refundInfo.value && refundInfo.value.status && refundInfo.value.status !== 'rejected') {
+    return false
+  }
+
+  // 待发货、待收货状态允许申请
+  if (order.value.status === 'pending_ship' || order.value.status === 'pending_recv') {
+    return true
+  }
+
+  // 已完成状态需满足15天内
+  if (order.value.status === 'completed') {
+    if (order.value.createTimeStamp > 0) {
+      const now = Date.now()
+      const daysDiff = (now - order.value.createTimeStamp) / (1000 * 60 * 60 * 24)
+      return daysDiff <= 15
+    }
+  }
+
+  return false
 }
 
 /**
@@ -1177,22 +1248,12 @@ const getRefundStatusText = (status) => {
  * 检查是否有退款状态（用于判断是否显示退款信息卡片）
  */
 const hasRefundStatus = () => {
-	// 如果是退款中或已退款状态，且有退款信息，则显示
-	if ((order.value.status === 'refunding' || order.value.status === 'refunded') && refundInfo.value) {
-		return true
-	}
-	
-	// 如果是已完成状态，检查是否有退款状态
-	if (order.value.status === 'completed') {
-		// 检查退款状态是否不为空
-		const refundStatus = (refundInfo.value && refundInfo.value.status) || order.value.refundStatus
-		// 只有当退款状态不为空（不是 null、undefined、空字符串）时才显示
-		if (refundStatus && String(refundStatus).trim() !== '') {
-			return true
-		}
-	}
-	
-	return false
+  // 只要有退款信息且退款状态不为空，就显示退款卡片
+  if (refundInfo.value && refundInfo.value.status) {
+    return true
+  }
+  // 兜底：如果订单主状态是退款中/已退款，但退款信息为空（理论上不会），也显示
+  return order.value.status === 'refunding' || order.value.status === 'refunded'
 }
 
 /**
@@ -1334,34 +1395,168 @@ const viewEvaluation = () => {
 
 let currentOrderNumber = null
 
+function safeDecodeURIComponent(s) {
+	if (s == null) return ''
+	try {
+		return decodeURIComponent(String(s).replace(/\+/g, ' '))
+	} catch (e) {
+		return String(s)
+	}
+}
+
+/** 解析 query 字符串为对象（不依赖 URLSearchParams，兼容部分小程序环境） */
+function parseQueryString(qs) {
+	const out = {}
+	if (!qs || typeof qs !== 'string') return out
+	const clean = qs.replace(/^\?/, '')
+	clean.split('&').forEach((pair) => {
+		if (!pair) return
+		const i = pair.indexOf('=')
+		let k
+		let v
+		if (i === -1) {
+			k = safeDecodeURIComponent(pair.trim())
+			v = ''
+		} else {
+			k = safeDecodeURIComponent(pair.substring(0, i).trim())
+			v = safeDecodeURIComponent(pair.substring(i + 1).trim())
+		}
+		if (k) out[k] = v
+	})
+	return out
+}
+
+function pickOrderNumberFromParsed(parsed) {
+	if (!parsed || typeof parsed !== 'object') return ''
+	const v =
+		parsed.orderNo ||
+		parsed.order_no ||
+		parsed.order_number ||
+		parsed.id ||
+		parsed.merchant_trade_no ||
+		parsed.merchantTradeNo
+	return v != null && v !== '' ? String(v).trim() : ''
+}
+
+/** 从「整段 URL / path?query / 纯 query」中取出订单号（含 merchant_trade_no） */
+function extractOrderNoFromEncodedPathOrQuery(str) {
+	if (!str || typeof str !== 'string') return ''
+	const trimmed = str.trim()
+	const qMark = trimmed.indexOf('?')
+	if (qMark !== -1) {
+		const hit = pickOrderNumberFromParsed(parseQueryString(trimmed.substring(qMark + 1)))
+		if (hit) return hit
+	}
+	if (trimmed.includes('=')) {
+		const hit = pickOrderNumberFromParsed(parseQueryString(trimmed))
+		if (hit) return hit
+	}
+	return ''
+}
+
+/** 微信小程序等环境下 onLoad 的 options 可能不全，从当前页实例再取一次 */
+function getOrderDetailPageOptions() {
+	try {
+		if (typeof getCurrentPages !== 'function') return {}
+		const pages = getCurrentPages()
+		const cur = pages[pages.length - 1]
+		if (!cur) return {}
+		return cur.options || (cur.$page && cur.$page.options) || {}
+	} catch (e) {
+		return {}
+	}
+}
+
+function tryDirectOrderKeys(opts) {
+	if (!opts || typeof opts !== 'object') return ''
+	const direct =
+		opts.orderNo ||
+		opts.id ||
+		opts.order_no ||
+		opts.order_number ||
+		opts.merchant_trade_no ||
+		opts.merchantTradeNo
+	if (direct) return String(direct).trim()
+	return ''
+}
+
 /**
- * 从多种来源解析订单号（兼容微信通知跳转时 query 在不同位置的情况）
+ * 从多种来源解析订单号（兼容订阅消息、扫码 q、path、微信支付 merchant_trade_no）
  */
 function resolveOrderNumberFromLoad(options) {
-	// 1) 直接参数（navigateTo 或 订阅消息 page 带 ?orderNo=xxx）
-	const direct = options.orderNo || options.id || options.order_no
-	if (direct) return String(direct).trim()
+	const rawOpts = options && typeof options === 'object' ? options : {}
+	const merged = { ...getOrderDetailPageOptions(), ...rawOpts }
 
-	// 2) 从启动/进入参数取（部分环境下微信通知点击后 query 在这里）
+	let found = tryDirectOrderKeys(merged)
+	if (found) return found
+
+	// 扫码：q 常为 encodeURIComponent(页面路径+query)；scene 也可能带 key=value
+	const qOrScene = merged.q != null && merged.q !== '' ? merged.q : merged.scene
+	if (qOrScene != null && qOrScene !== '') {
+		const raw = String(qOrScene).trim()
+		try {
+			const decoded = decodeURIComponent(raw)
+			found = extractOrderNoFromEncodedPathOrQuery(decoded)
+			if (found) return found
+		} catch (e) {
+			found = extractOrderNoFromEncodedPathOrQuery(raw)
+			if (found) return found
+		}
+	}
+
 	try {
 		if (typeof uni.getEnterOptionsSync === 'function') {
 			const enter = uni.getEnterOptionsSync()
 			const q = (enter && enter.query) || {}
-			const fromEnter = q.orderNo || q.id || q.order_no
-			if (fromEnter) return String(fromEnter).trim()
+			found = tryDirectOrderKeys(q)
+			if (found) return found
 		}
 	} catch (e) {
 		// ignore
 	}
 
-	// 3) 从 path 中解析（如 path 为 "pages/order/detail?orderNo=ORDER123"）
-	const path = (options && options.path) || ''
-	const qIndex = path.indexOf('?')
-	if (qIndex !== -1) {
-		const queryStr = path.substring(qIndex + 1)
-		const params = new URLSearchParams(queryStr)
-		const fromPath = params.get('orderNo') || params.get('id') || params.get('order_no')
-		if (fromPath) return String(fromPath).trim()
+	try {
+		if (typeof uni.getLaunchOptionsSync === 'function') {
+			const launch = uni.getLaunchOptionsSync()
+			const q = (launch && launch.query) || {}
+			found = tryDirectOrderKeys(q)
+			if (found) return found
+			const sc = launch && launch.scene
+			if (sc != null && String(sc).includes('=')) {
+				try {
+					const decoded = decodeURIComponent(String(sc))
+					found = extractOrderNoFromEncodedPathOrQuery(decoded)
+					if (found) return found
+				} catch (e2) {
+					found = extractOrderNoFromEncodedPathOrQuery(String(sc))
+					if (found) return found
+				}
+			}
+		}
+	} catch (e) {
+		// ignore
+	}
+
+	const path = merged.path || ''
+	if (path && path.includes('?')) {
+		const queryStr = path.substring(path.indexOf('?') + 1)
+		found = pickOrderNumberFromParsed(parseQueryString(queryStr))
+		if (found) return found
+		if (typeof URLSearchParams !== 'undefined') {
+			try {
+				const params = new URLSearchParams(queryStr)
+				const fromPath =
+					params.get('orderNo') ||
+					params.get('id') ||
+					params.get('order_no') ||
+					params.get('order_number') ||
+					params.get('merchant_trade_no') ||
+					params.get('merchantTradeNo')
+				if (fromPath) return String(fromPath).trim()
+			} catch (e3) {
+				// ignore
+			}
+		}
 	}
 	return ''
 }
@@ -1389,45 +1584,32 @@ onShow(() => {
 			if (p && p.orderNo && (Date.now() - (p.at || 0)) < 120000) {
 				const doSync = (isRetry) => {
 				    console.log('[订单详情] onShow 兜底：调后端确认收货', p.orderNo, isRetry ? '(重试)' : '')
-				    // 新增：如果没有 transactionId，则无法同步，清除记录并返回
 				    if (!p.transactionId) {
 				        console.warn('[订单详情] transactionId 为空，无法同步确认收货，清除记录')
 				        uni.removeStorageSync('pending_confirm_receive')
 				        return
 				    }
-				    confirmReceive({ order_number: p.orderNo, transaction_id: p.transactionId || undefined }).then(() => {
-						uni.removeStorageSync('pending_confirm_receive')
-						uni.showToast({ title: '收货已同步', icon: 'success' })
-						if (currentOrderNumber) loadOrderDetail(currentOrderNumber)
-					})
-					.catch((err) => {
-					            console.warn('[订单列表] onShow 兜底确认收货失败', err)
-					            const msg = err && (err.message || err.msg || err.errorMsg) || ''
-					            
-					            // 新增：如果错误是 400 且订单已处于 completed 状态，视为同步成功
-					            const isAlreadyCompleted = err.statusCode === 400 && /已完成|completed/i.test(msg)
-					            if (isAlreadyCompleted) {
-					                console.log('[订单列表] 订单已处于完成状态，清除记录')
-					                uni.removeStorageSync('pending_confirm_receive')
-					                // 可选：刷新订单列表
-					                loadOrderList()
-					                return
-					            }
-						if (isUnknownState && isRetry) {
-							uni.showModal({
-								title: '状态同步中',
-								content: '微信收货状态可能尚未更新。请稍后点击「重试」或返回刷新。',
-								confirmText: '重试',
-								cancelText: '知道了',
-								success: (res) => {
-									if (res.confirm) doSync(true)
-								}
-							})
-						} else {
-							uni.showToast({ title: msg || '同步失败', icon: 'none' })
-							if (currentOrderNumber) loadOrderDetail(currentOrderNumber)
-						}
-					})
+				    confirmReceive({ order_number: p.orderNo, transaction_id: p.transactionId || undefined })
+				        .then(() => {
+				            uni.removeStorageSync('pending_confirm_receive')
+				            uni.showToast({ title: '收货已同步', icon: 'success' })
+				            if (currentOrderNumber) loadOrderDetail(currentOrderNumber)
+				        })
+				        .catch((err) => {
+				            console.warn('[订单详情] onShow 兜底确认收货失败', err)
+				            const msg = err && (err.message || err.msg || err.errorMsg) || ''
+				            // 如果错误是 400 且订单已处于 completed 状态，视为同步成功
+				            const isAlreadyCompleted = err.statusCode === 400 && /已完成|completed/i.test(msg)
+				            if (isAlreadyCompleted) {
+				                console.log('[订单详情] 订单已处于完成状态，清除记录')
+				                uni.removeStorageSync('pending_confirm_receive')
+				                if (currentOrderNumber) loadOrderDetail(currentOrderNumber)
+				                return
+				            }
+				            // 其他错误：提示用户，不清除缓存（下次进入还会尝试）
+				            uni.showToast({ title: msg || '同步失败', icon: 'none' })
+				            if (currentOrderNumber) loadOrderDetail(currentOrderNumber)
+				        })
 				}
 				setTimeout(() => doSync(false), 3000)
 			}

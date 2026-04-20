@@ -54,32 +54,36 @@
         </view>
 
         <!-- 优惠券（与积分确认订单一致） -->
-        <view class="coupon-section">
+        <view class="coupon-section" v-if="availableCount > 0">
           <view class="section-header">
             <text class="section-title">优惠券</text>
-            <text class="available-points">共有 {{ availableCoupons.length }} 张可用</text>
+            <text class="available-points">可用 {{ availableCount }} 张</text>
           </view>
-          <view v-if="selectedCoupon" class="selected-coupon">
-            <view class="selected-coupon-content">
-              <text class="selected-coupon-name">已选：{{ selectedCoupon.name || '优惠券' }}</text>
-              <text class="selected-coupon-value">-¥{{ formatAmount(couponDiscount) }}</text>
-            </view>
-            <button class="cancel-coupon-btn" @tap="clearCoupon">取消</button>
+          <view class="auto-coupon-info">
+            <text class="info-text">已选择 {{ selectedCouponCount }} 张1元券</text>
+            <text class="info-desc">抵扣 ¥{{ couponDiscount }}</text>
+            <text class="info-tip">（优先使用即将过期的券）</text>
           </view>
-          <view v-else class="coupon-list-wrap">
-            <view v-for="c in availableCoupons" :key="c.id" class="coupon-item" @tap="selectCoupon(c)">
-              <view class="coupon-left">
-                <text class="coupon-value">¥{{ formatAmount(couponAmount(c)) }}</text>
-                <text v-if="minSpend(c) > 0" class="coupon-condition">满{{ minSpend(c) }}可用</text>
-              </view>
-              <view class="coupon-right">
-                <text class="coupon-name">{{ c.name || c.template?.name || '优惠券' }}</text>
-              </view>
-            </view>
-            <view v-if="availableCoupons.length === 0 && !couponLoading" class="no-coupons">
-              <text class="no-coupons-text">暂无可用优惠券</text>
-            </view>
-            <view v-if="couponLoading" class="coupon-loading">加载中...</view>
+          <view class="coupon-slider-row">
+            <text class="slider-label">使用张数：{{ selectedCouponCount }} / {{ availableCount }}</text>
+            <slider 
+              class="coupon-slider"
+              :value="selectedCouponCount"
+              :min="0"
+              :max="availableCount"
+              step="1"
+              activeColor="#ff9800"
+              @change="onCouponCountChange"
+            />
+          </view>
+        </view>
+        <view class="coupon-section" v-else-if="!loadingCoupons">
+          <view class="section-header">
+            <text class="section-title">优惠券</text>
+            <text class="available-points">暂无可用</text>
+          </view>
+          <view class="no-coupons">
+            <text class="no-coupons-text">暂无可用优惠券</text>
           </view>
         </view>
 
@@ -226,7 +230,9 @@ const paying = ref(false)
 const selectedMethod = ref(1) // 1-微信支付, 2-支付宝, 3-余额支付
 const couponList = ref([])
 const couponLoading = ref(false)
-const selectedCoupon = ref(null)
+const selectedCouponIds = ref([])   // 选中的优惠券 ID 数组
+const selectedCouponCount = ref(0)   // 选中的张数
+const loadingCoupons = ref(false)    // 优惠券加载状态
 const disablePoints = ref(false) // 是否禁用积分抵扣
 const orderAmount = computed(() => Number(orderData.value?.total_amount ?? orderData.value?.amount ?? 0))
 const userPointsBalance = ref(0)
@@ -250,11 +256,7 @@ const rawResponseText = computed(() => {
     return String(r)
   }
 })
-const couponDiscount = computed(() => {
-  if (!selectedCoupon.value || orderAmount.value <= 0) return 0
-  const amt = couponAmount(selectedCoupon.value)
-  return Math.min(amt, orderAmount.value)
-})
+const couponDiscount = computed(() => selectedCouponCount.value)
 const availableCoupons = computed(() => {
   const amount = orderAmount.value
   const now = Date.now()
@@ -265,6 +267,24 @@ const availableCoupons = computed(() => {
     if (to && new Date(to).getTime() < now) return false
     return (c.status || '') !== 'used'
   })
+})
+
+// 可用的1元券（按过期时间升序）
+const availableOneYuanCoupons = computed(() => {
+  return couponList.value
+    .filter(c => Number(c.amount) === 1 && c.status === 'unused')
+    .sort((a, b) => new Date(a.validTo) - new Date(b.validTo))
+})
+
+// 最大可使用张数（由订单原价 - 积分抵扣 向上取整）
+const maxUsableCount = computed(() => {
+  const remaining = Math.max(0, orderAmount.value - pointsDiscount.value)
+  return Math.ceil(remaining)
+})
+
+// 实际可用张数（受库存限制）
+const availableCount = computed(() => {
+  return Math.min(availableOneYuanCoupons.value.length, maxUsableCount.value)
 })
 
 function couponAmount(c) {
@@ -292,7 +312,10 @@ function onPointsInput(e) {
 function useMaxPoints() {
   pointsToUse.value = maxPointsDiscount.value
 }
-
+// 新增：优惠券滑块变化处理
+const onCouponCountChange = (e) => {
+  selectedCouponCount.value = e.detail.value
+}
 /**
  * 加载用户积分余额
  */
@@ -377,19 +400,69 @@ async function loadCoupons() {
   const userInfo = uni.getStorageSync('userInfo') || {}
   const userId = userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid
   if (!userId) return
-  couponLoading.value = true
+  
+  loadingCoupons.value = true
+  
   try {
-    const res = await getMyCoupons({ user_id: userId, status: 'unused', page: 1, page_size: 50 })
-    const list = res.data?.coupons ?? res.coupons ?? res.data?.rows ?? res.data?.list ?? res.rows ?? res.list ?? []
-    couponList.value = Array.isArray(list) ? list : []
+    // ========== 分页循环加载开始 ==========
+    let page = 1
+    const pageSize = 100        // 每页条数
+    const maxPages = 100        // 最多加载100页（10000张兜底）
+    let allCoupons = []
+    let hasMore = true
+    
+    while (hasMore && page <= maxPages) {
+      const res = await getMyCoupons({ 
+        user_id: userId, 
+        status: 'unused',       // 线下只加载未使用的
+        page: page, 
+        page_size: pageSize 
+      })
+      
+      const list = res.data?.coupons ?? res.coupons ?? res.data?.rows ?? res.data?.list ?? res.rows ?? res.list ?? []
+      
+      if (!Array.isArray(list) || list.length === 0) {
+        hasMore = false
+        break
+      }
+      
+      allCoupons = allCoupons.concat(list)
+      
+      // 如果返回数量小于pageSize，说明没有更多数据了
+      if (list.length < pageSize) {
+        hasMore = false
+      } else {
+        page++
+      }
+    }
+    
+    console.log(`[线下支付] 共加载 ${allCoupons.length} 张优惠券（${page} 页）`)
+    // ========== 分页循环加载结束 ==========
+    
+    couponList.value = Array.isArray(allCoupons) ? allCoupons : []
+    
   } catch (e) {
     console.warn('[线下支付] 加载优惠券失败', e)
     couponList.value = []
   } finally {
-    couponLoading.value = false
+    loadingCoupons.value = false
   }
 }
+// 监听可用张数，首次自动设为最大（如果用户未手动选过）
+watch(availableCount, (newCount) => {
+  if (selectedCouponCount.value === 0 && newCount > 0) {
+    selectedCouponCount.value = newCount
+  }
+  // 如果当前选择的张数超过可用张数（例如积分抵扣导致上限降低），自动下调
+  if (selectedCouponCount.value > newCount) {
+    selectedCouponCount.value = newCount
+  }
+}, { immediate: true })
 
+// 监听选择张数变化，更新选中的优惠券 ID 数组
+watch(selectedCouponCount, (newCount) => {
+  selectedCouponIds.value = availableOneYuanCoupons.value.slice(0, newCount).map(c => c.id)
+}, { immediate: true })
 /**
  * 选择支付方式
  */
@@ -571,7 +644,7 @@ const handlePayment = async () => {
     uni.showLoading({ title: '正在支付...' })
 
     const orderNumber = orderData.value.order_no || orderData.value.orderNo || orderNo.value
-    const couponId = selectedCoupon.value ? selectedCoupon.value.id : null
+    const couponIds = selectedCouponIds.value.length ? selectedCouponIds.value : null
 	const pts = !disablePoints.value && pointsToUse.value > 0 ? pointsToUse.value * 100 : null
 
     if (selectedMethod.value === 1) {
@@ -644,7 +717,7 @@ const handlePayment = async () => {
       const userId = userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid ?? null
       const totalFeeFen = Math.round((Number(amount) || 0) * 100)
 
-      const res = await offlinePayUnified(orderNumber, couponId, openid, userId, totalFeeFen, pts)
+      const res = await offlinePayUnified(orderNumber, couponIds, openid, userId, totalFeeFen, pts)
 
 
       const payParams =
@@ -1605,5 +1678,42 @@ onMounted(() => {
   background: white;
   color: #666;
   border: 1rpx solid #ddd;
+}
+.coupon-slider-row {
+  margin-top: 20rpx;
+  padding: 20rpx 0;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+.slider-label {
+  font-size: 26rpx;
+  color: #666;
+  width: 180rpx;
+}
+.coupon-slider {
+  flex: 1;
+}
+.auto-coupon-info {
+  background: #fff3e0;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  margin-bottom: 20rpx;
+}
+.info-text {
+  font-size: 28rpx;
+  color: #ff9800;
+  font-weight: 600;
+  display: block;
+}
+.info-desc {
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 8rpx;
+}
+.info-tip {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 8rpx;
 }
 </style>

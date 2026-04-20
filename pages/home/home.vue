@@ -1,15 +1,13 @@
 <template>
 	<view class="home-page">
 		<scroll-view 
-			class="scroll-container"
-			scroll-y
-			refresher-enabled
-			:refresher-triggered="refreshing"
-			@refresherrefresh="onRefresh"
-			@refresherrestore="onRestore"
-			@scrolltolower="handleScrollToLower"
-			:lower-threshold="50"
-			enable-back-to-top
+		    class="scroll-container"
+		    scroll-y
+		    refresher-enabled
+		    :refresher-triggered="refreshing"
+		    @refresherrefresh="onRefresh"
+		    @refresherrestore="onRestore"
+		    enable-back-to-top
 		>
 		<!-- 左上角：圆形 logo + 禹泽数字 -->
 		<view class="home-header">
@@ -21,10 +19,6 @@
 			<view class="search-input" @click="goToSearch">
 				<text class="iconfont icon-sousuo search-icon"></text>
 				<text class="search-placeholder">搜索商品</text>
-			</view>
-			<view class="scan-pay-btn" @tap="scanToPay">
-				<text class="iconfont icon-saoyisao scan-icon"></text>
-				<text class="scan-pay-text">扫码付款</text>
 			</view>
 		</view>
 
@@ -64,8 +58,6 @@
 			<scroll-view 
 				class="product-scroll" 
 				scroll-x 
-				@scrolltolower="onVipLoadMore" 
-				:lower-threshold="50"
 			>
 				<view class="product-list">
 					<view
@@ -118,21 +110,15 @@
 				</view>
 			</view>
 			<!-- 加载更多提示 -->
-			<view v-if="loadingMore" class="loading-more">
-				<text class="loading-text">加载中...</text>
-			</view>
-			<view v-if="!hasMore && normalProducts.length > 0" class="no-more">
-				<text class="no-more-text">没有更多商品了</text>
-			</view>
-		</view>
+		  </view> <!-- 闭合 product-section -->	
 		</scroll-view>
 	</view>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { onLoad, onShow, onReachBottom } from '@dcloudio/uni-app'
-import { getBannerList, getProductList, getProductSales } from '@/api/product.js'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { getBannerList, getHomeProducts, getProductList, getProductSales } from '@/api/product.js'
 import { getCharityNotices } from '@/config/charity.js'
 import { getSystemSentences } from '@/api/system.js'
 import { getUnreadCount } from '@/api/message.js'
@@ -149,12 +135,12 @@ const normalProducts = ref([])
 const charityNotices = ref([])
 const refreshing = ref(false)
 const loading = ref(true) // 添加加载状态，避免初始闪烁
-const loadingMore = ref(false) // 加载更多状态
-const hasMore = ref(true) // 是否还有更多商品
-const currentPage = ref(1) // 当前页码
+//const loadingMore = ref(false) // 加载更多状态
+//const hasMore = ref(true) // 是否还有更多商品
+//const currentPage = ref(1) // 当前页码
 const pageSize = ref(30) // 每页数量，初始加载30个商品
-const allVipProducts = ref([]) // 所有会员商品
-const allNormalProducts = ref([]) // 所有普通商品
+//const allVipProducts = ref([]) // 所有会员商品
+//const allNormalProducts = ref([]) // 所有普通商品
 
 /**
  * 加载轮播图 - 从轮播图商品中获取所有轮播图
@@ -324,225 +310,53 @@ const formatProduct = (product) => {
 /**
  * 加载商品列表（会员商品和普通商品）
  */
-const loadProducts = async (page = 1, append = false) => {
-	try {
-		if (!append) {
-			// 重置状态（仅首次加载时）
-			currentPage.value = page - 1 // 设置为上一页，这样下次加载时 nextPage = currentPage + 1
-			allVipProducts.value = []
-			allNormalProducts.value = []
-			hasMore.value = true
-		}
-		
-		const res = await getProductList({ 
-			page: page, 
-			size: pageSize.value // 使用 size 参数，每页30个商品
-		})
-		
-		// 处理不同的响应格式
-		let productList = []
-		if (Array.isArray(res.data)) {
-			productList = res.data
-		} else if (res.data?.list && Array.isArray(res.data.list)) {
-			productList = res.data.list
-		} else if (Array.isArray(res.list)) {
-			productList = res.list
-		}
-		
-		console.log('[首页] 商品API返回:', { 
-			productCount: productList.length,
-			firstProduct: productList[0] // 打印第一个商品的数据结构
-		})
-		
-		// 过滤在售商品，并排除轮播图商品
-		const onSaleProducts = productList.filter(p => {
-			// 必须是上架状态
-			const isOnSale = p.status === 1 || p.status === 'on_sale' || p.status === 'active'
-			// 排除轮播图商品（名称包含"轮播图"或SKU以"BANNER-"开头）
-			const productName = (p.name || '').toLowerCase()
-			const isBannerByName = productName.includes('轮播图')
-			let isBannerBySku = false
-			if (p.skus && p.skus.length > 0) {
-				const skuCode = (p.skus[0].sku_code || p.skus[0].sku || '').toUpperCase()
-				isBannerBySku = skuCode.startsWith('BANNER-')
-			}
-			if (p.sku_code) {
-				const skuCode = (p.sku_code || '').toUpperCase()
-				isBannerBySku = isBannerBySku || skuCode.startsWith('BANNER-')
-			}
-			const isNotBanner = !(isBannerByName || isBannerBySku)
-			return isOnSale && isNotBanner
-		})
-		
-		// 批量获取商品销量
-		console.log('[首页] 开始获取商品销量，商品数量:', onSaleProducts.length)
-		const salesPromises = onSaleProducts.map(product => 
-			getProductSales(product.id).catch(() => null)
-		)
-		const salesResults = await Promise.allSettled(salesPromises)
-		
-		// 创建销量映射表
-		const salesMap = {}
-		salesResults.forEach((result, index) => {
-			if (result.status === 'fulfilled' && result.value?.data) {
-				const salesData = result.value.data
-				const productId = onSaleProducts[index].id
-				// 优先使用 sales_count，如果没有则尝试其他字段
-				const salesCount = salesData.sales_count || salesData.sold_count || salesData.total_quantity || salesData.quantity || salesData.sales_quantity || 0
-				salesMap[productId] = parseInt(salesCount)
-			}
-		})
-		console.log('[首页] 销量数据获取完成，销量映射:', salesMap)
-		
-		// 根据 is_member_product 字段区分会员商品和普通商品
-		const memberProducts = onSaleProducts.filter(p => {
-			// 会员商品：is_member_product 为 true、1 或 'true'
-			const isMember = p.is_member_product === true || p.is_member_product === 1 || p.is_member_product === 'true'
-			if (isMember) {
-				console.log(`[首页] 识别为会员商品:`, {
-					id: p.id,
-					name: p.name,
-					is_member_product: p.is_member_product,
-					main_image: p.main_image
-				})
-			}
-			return isMember
-		})
-		
-		const normalProductsList = onSaleProducts.filter(p => {
-			// 普通商品：is_member_product 为 false、0、'false'、null 或 undefined
-			return p.is_member_product === false || 
-			       p.is_member_product === 0 || 
-			       p.is_member_product === 'false' || 
-			       p.is_member_product === null || 
-			       p.is_member_product === undefined
-		})
+const loadProducts = async () => {
+  try {
+    const res = await getHomeProducts()
+    const productList = res.data || [] // 根据接口返回格式调整
 
-		// 首页普通商品仅展示「食品饮料」分类，其它分类去商品列表查看
-		const isFoodDrink = (p) => {
-			const raw = p.category ?? p.category_name ?? p.categoryName ?? p.cate_name ?? p.cateName ?? ''
-			const s = String(raw || '').trim()
-			return s === '食品饮料'
-		}
-		const normalProductsOnHome = normalProductsList.filter(isFoodDrink)
-		
-		console.log('[首页] 过滤结果:', {
-			总商品数: productList.length,
-			在售商品数: onSaleProducts.length,
-			会员商品数: memberProducts.length,
-			普通商品数: normalProductsList.length,
-			会员商品详情: memberProducts.map(p => ({
-				id: p.id,
-				name: p.name,
-				is_member_product: p.is_member_product,
-				main_image: p.main_image
-			}))
-		})
-		
-		// 格式化并应用销量数据
-		const formattedVipProducts = memberProducts.map(product => {
-			const formatted = formatProduct(product)
-			// 如果有销量数据，使用销量接口返回的数据
-			if (salesMap[product.id] !== undefined) {
-				formatted.sales = salesMap[product.id]
-			}
-			return formatted
-		})
-		
-		const formattedNormalProducts = normalProductsOnHome.map(product => {
-			const formatted = formatProduct(product)
-			// 如果有销量数据，使用销量接口返回的数据
-			if (salesMap[product.id] !== undefined) {
-				formatted.sales = salesMap[product.id]
-			}
-			return formatted
-		})
-		
-		// 追加或替换商品列表
-		if (append) {
-			// 追加模式：合并新商品，避免重复
-			const existingVipIds = new Set(allVipProducts.value.map(p => p.id))
-			const existingNormalIds = new Set(allNormalProducts.value.map(p => p.id))
-			
-			const newVipProducts = formattedVipProducts.filter(p => !existingVipIds.has(p.id))
-			const newNormalProducts = formattedNormalProducts.filter(p => !existingNormalIds.has(p.id))
-			
-			allVipProducts.value = [...allVipProducts.value, ...newVipProducts]
-			allNormalProducts.value = [...allNormalProducts.value, ...newNormalProducts]
-			
-			console.log('[首页] 追加商品:', {
-				新增会员商品: newVipProducts.length,
-				新增普通商品: newNormalProducts.length,
-				总会员商品: allVipProducts.value.length,
-				总普通商品: allNormalProducts.value.length
-			})
-		} else {
-			// 首次加载：直接替换
-			allVipProducts.value = formattedVipProducts
-			allNormalProducts.value = formattedNormalProducts
-			currentPage.value = 1
-		}
-		
-		// 检查是否还有更多数据
-		const totalNewProducts = formattedVipProducts.length + formattedNormalProducts.length
-		const totalRawProducts = productList.length // 原始返回的商品数量（未过滤）
-		
-		console.log('[首页] 商品数量检查:', {
-			原始商品数: totalRawProducts,
-			过滤后商品数: totalNewProducts,
-			会员商品: formattedVipProducts.length,
-			普通商品: formattedNormalProducts.length,
-			pageSize: pageSize.value,
-			追加模式: append
-		})
-		
-		// 只有在追加模式下，才根据返回数量判断是否还有更多
-		// 如果返回的原始商品数量等于或大于pageSize，说明可能还有更多
-		// 如果返回的原始商品数量为0，说明确实没有更多了
-		if (append) {
-			// 追加模式：如果原始返回的商品数量为0，说明没有更多了
-			if (totalRawProducts === 0) {
-				hasMore.value = false
-				console.log('[首页] 追加模式：返回0个商品，没有更多了')
-			} else if (totalRawProducts < pageSize.value) {
-				// 如果返回的商品数量少于pageSize，可能没有更多了，但先设置为true，让用户再试一次
-				hasMore.value = true
-				currentPage.value = page
-				console.log('[首页] 追加模式：返回商品数少于pageSize，但继续尝试')
-			} else {
-				// 返回的商品数量等于pageSize，肯定还有更多
-				hasMore.value = true
-				currentPage.value = page
-				console.log('[首页] 追加模式：返回商品数等于pageSize，还有更多')
-			}
-		} else {
-			// 首次加载：总是设置为true，允许加载更多
-			hasMore.value = true
-			currentPage.value = page
-			console.log('[首页] 首次加载：设置hasMore为true，允许加载更多')
-		}
-		
-		// 显示前10个会员商品和所有普通商品
-		vipProducts.value = allVipProducts.value.slice(0, 10)
-		normalProducts.value = allNormalProducts.value
-		
-		console.log('[首页] 商品显示更新:', {
-			显示会员商品: vipProducts.value.length,
-			显示普通商品: normalProducts.value.length,
-			总会员商品: allVipProducts.value.length,
-			总普通商品: allNormalProducts.value.length
-		})
-		
-		console.log('[首页] 商品分类结果:', {
-			会员商品: vipProducts.value.length,
-			普通商品: normalProducts.value.length,
-			会员商品列表: vipProducts.value.map(p => ({ id: p.id, name: p.name, image: p.image }))
-		})
-	} catch (error) {
-		console.error('加载商品失败', error)
-		vipProducts.value = []
-		normalProducts.value = []
-	}
+    // 过滤在售商品（可选）
+    const onSaleProducts = productList.filter(p => p.status === 1)
+
+    const memberProducts = onSaleProducts.filter(p => p.is_member_product)
+    const normalProductsList = onSaleProducts.filter(p => !p.is_member_product)
+
+    // 普通商品：只保留首页推荐的商品
+    const normalProductsOnHome = normalProductsList.filter(p => p.is_home_recommend == 1)
+
+    // 批量获取销量（可选，如不需要可删除）
+    const salesPromises = onSaleProducts.map(product => 
+      getProductSales(product.id).catch(() => null)
+    )
+    const salesResults = await Promise.allSettled(salesPromises)
+    const salesMap = {}
+    salesResults.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value?.data) {
+        const salesData = result.value.data
+        const productId = onSaleProducts[index].id
+        const salesCount = salesData.sales_count || salesData.sold_count || salesData.total_quantity || salesData.quantity || salesData.sales_quantity || 0
+        salesMap[productId] = parseInt(salesCount)
+      }
+    })
+
+    // 格式化会员商品（取前10个）
+    vipProducts.value = memberProducts.map(product => {
+      const formatted = formatProduct(product)
+      if (salesMap[product.id] !== undefined) formatted.sales = salesMap[product.id]
+      return formatted
+    }).slice(0, 10)
+	
+    // 格式化普通商品
+    normalProducts.value = normalProductsOnHome.map(product => {
+      const formatted = formatProduct(product)
+      if (salesMap[product.id] !== undefined) formatted.sales = salesMap[product.id]
+      return formatted
+    })
+  } catch (error) {
+    console.error('加载首页商品失败', error)
+    vipProducts.value = []
+    normalProducts.value = []
+  }
 }
 
 /**
@@ -834,36 +648,19 @@ const loadAllData = async () => {
  * 下拉刷新 - 页码加一，加载下一页
  */
 const onRefresh = async () => {
-	refreshing.value = true
-	loading.value = true
-	try {
-		// 页码加一，加载下一页
-		const nextPage = currentPage.value + 1
-		console.log(`[首页] 下拉刷新，加载第${nextPage}页商品，每页${pageSize.value}个`)
-		
-		await loadProducts(nextPage, true) // append=true 追加模式
-		
-		uni.showToast({
-			title: '加载成功',
-			icon: 'success',
-			duration: 1500
-		})
-	} catch (error) {
-		console.error('刷新失败', error)
-		uni.showToast({
-			title: '刷新失败',
-			icon: 'none',
-			duration: 1500
-		})
-	} finally {
-		loading.value = false
-		// 延迟关闭刷新状态，让用户看到刷新动画
-		setTimeout(() => {
-			refreshing.value = false
-		}, 500)
-	}
+  refreshing.value = true
+  loading.value = true
+  try {
+    await loadAllData() // 重新加载全部数据
+    uni.showToast({ title: '刷新成功', icon: 'success' })
+  } catch (error) {
+    console.error('刷新失败', error)
+    uni.showToast({ title: '刷新失败', icon: 'none' })
+  } finally {
+    loading.value = false
+    setTimeout(() => { refreshing.value = false }, 500)
+  }
 }
-
 /**
  * 刷新恢复
  */
@@ -882,66 +679,13 @@ const handleScrollToLower = (e) => {
 /**
  * 滚动到底部自动加载更多商品
  */
-const onLoadMore = async () => {
-	console.log('[首页] 滚动到底部，开始加载更多商品', {
-		loadingMore: loadingMore.value,
-		hasMore: hasMore.value,
-		currentPage: currentPage.value,
-		timestamp: new Date().toISOString()
-	})
-	
-	if (loadingMore.value || !hasMore.value) {
-		console.log('[首页] 跳过加载：正在加载中或没有更多数据', {
-			loadingMore: loadingMore.value,
-			hasMore: hasMore.value
-		})
-		return
-	}
-	
-	loadingMore.value = true
-	try {
-		const nextPage = currentPage.value + 1
-		console.log(`[首页] 滚动到底部，加载第${nextPage}页商品，每页${pageSize.value}个`)
-		
-		await loadProducts(nextPage, true)
-		
-		console.log('[首页] 加载更多商品成功', {
-			vipProducts: allVipProducts.value.length,
-			normalProducts: allNormalProducts.value.length,
-			hasMore: hasMore.value,
-			currentPage: currentPage.value
-		})
-	} catch (error) {
-		console.error('[首页] 加载更多商品失败', error)
-		uni.showToast({
-			title: '加载失败',
-			icon: 'none',
-			duration: 1500
-		})
-	} finally {
-		loadingMore.value = false
-	}
-}
+
 
 /**
  * 会员专区横向滚动到底部时加载更多会员商品
  * 实际上也是加载下一页商品，但触发条件是 VIP 列表右滑到尽头
  */
-const onVipLoadMore = async () => {
-	console.log('[首页] 会员商品右滑到底，尝试加载更多', {
-		loadingMore: loadingMore.value,
-		hasMore: hasMore.value,
-		currentPage: currentPage.value
-	})
-	
-	if (loadingMore.value || !hasMore.value) {
-		console.log('[首页] 会员商品加载更多被跳过（正在加载或没有更多）')
-		return
-	}
-	
-	// 直接复用纵向加载逻辑
-	await onLoadMore()
-}
+
 
 /**
  * 尝试在首页绑定推荐人（带重试和备用方案）
@@ -1248,11 +992,9 @@ const tryBindReferrerOnHome = async (retryCount = 0, maxRetries = 3) => {
 onLoad(async () => {
 	loading.value = true
 	try {
-		// 首次加载：重置页码为0，加载第一页
-		currentPage.value = 0
 		await Promise.all([
 			loadBanners(),
-			loadProducts(1, false), // 首次加载第一页，不追加
+			loadProducts(), // 改为无参调用
 			loadUnreadCount(),
 			loadCharityNotices()
 		])
@@ -1262,7 +1004,6 @@ onLoad(async () => {
 			normalProducts: normalProducts.value.length
 		})
 		
-		// 延迟执行绑定，确保用户信息已加载
 		setTimeout(() => {
 			tryBindReferrerOnHome()
 		}, 1000)
@@ -1287,10 +1028,6 @@ onShow(() => {
 /**
  * 页面滚动到底部时触发（作为 scroll-view 的备用方案）
  */
-onReachBottom(() => {
-	console.log('[首页] onReachBottom 触发，尝试加载更多')
-	onLoadMore()
-})
 </script>
 
 <style scoped>

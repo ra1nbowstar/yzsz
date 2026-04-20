@@ -109,3 +109,19 @@ export const useCoupon = (params) => {
   return request.post(url, {})
 }
 
+export const exchangeCouponsApi = (count) => {
+  let url = '/api/coupons/exchange'
+  if (count !== undefined && count !== null && count > 0) {
+    url += `?count=${encodeURIComponent(count)}`
+  }
+  return request.post(url, {})
+}
+
+/**
+ * 获取即将过期的优惠券
+ * @param {Number} days 即将过期的天数（默认3，最大30）
+ * @returns {Promise}
+ */
+export const getExpiringCoupons = (days = 3) => {
+  return request.get('/api/coupons/expiring', { days })
+}

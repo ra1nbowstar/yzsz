@@ -83,7 +83,7 @@
         </view>
         
         <!-- 退款申请信息（待售后订单显示） -->
-        <view v-if="order.status === 'refunding'" class="refund-info">
+        <view v-if="order.refund_info" class="refund-info">
           <view class="refund-header">
             <text class="refund-title">退款申请</text>
             <text class="refund-status" v-if="order.refund_info && order.refund_info.status">
@@ -112,58 +112,20 @@
         </view>
         
         <view class="order-actions">
-          <!-- 待售后订单（申请退款）：显示审核按钮 -->
-          <template v-if="order.status === 'refunding'">
-            <!-- 只有待审核状态才显示通过/拒绝按钮 -->
-            <!-- 如果没有退款信息，或者状态为空，或者状态是待审核，都显示审核按钮 -->
-            <template v-if="!order.refund_info || !order.refund_info.status || order.refund_info.status === 'pending' || order.refund_info.status === 'applied' || order.refund_info.status === ''">
-              <button 
-                class="action-btn approve"
-                @tap.stop="approveRefund(order)"
-              >
-                同意退款
-              </button>
-              <button 
-                class="action-btn reject"
-                @tap.stop="rejectRefund(order)"
-              >
-                拒绝退款
-              </button>
-            </template>
-            <!-- 如果退款状态不是待审核，显示状态文本 -->
-            <button 
-              v-else
-              class="action-btn disabled"
-              disabled
-            >
-              {{ getRefundStatusText(order.refund_info.status) }}
-            </button>
+          <!-- 有待商戶審核的退款：與店鋪端一致，不要求 refund_info.status 必有值（線下單常缺省） -->
+          <template v-if="order.refund_info && isRefundAwaitingMerchantReview(order.refund_info)">
+            <button class="action-btn approve" @tap.stop="approveRefund(order)">同意退款</button>
+            <button class="action-btn reject" @tap.stop="rejectRefund(order)">拒绝退款</button>
           </template>
-          <!-- 其他状态的按钮 -->
+          <template v-else-if="order.refund_info">
+            <button class="action-btn disabled" disabled>{{ getRefundStatusText(order.refund_info.status) }}</button>
+          </template>
+          <!-- 无退款信息，显示正常订单操作按钮 -->
           <template v-else>
-            <!-- 待付款状态显示禁用按钮 -->
-            <button 
-              v-if="order.status === 'pending_pay'" 
-              class="action-btn disabled"
-              disabled
-            >
-              待付款
-            </button>
-            <!-- 待发货状态显示发货按钮 -->
-            <button 
-              v-if="order.status === 'pending_ship'" 
-              class="action-btn ship"
-              @tap.stop="shipOrder(order)"
-            >
-              发货
-            </button>
+            <button v-if="order.status === 'pending_pay'" class="action-btn disabled" disabled>待付款</button>
+            <button v-if="order.status === 'pending_ship'" class="action-btn ship" @tap.stop="shipOrder(order)">发货</button>
           </template>
-          <button 
-            class="action-btn detail"
-            @tap.stop="goToOrderDetail(order)"
-          >
-            查看详情
-          </button>
+          <button class="action-btn detail" @tap.stop="goToOrderDetail(order)">查看详情</button>
         </view>
       </view>
       
@@ -286,10 +248,63 @@ import { ref, computed, onMounted } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getMerchantOrders, shipOrder as shipOrderApi, getDeliveryList, updateOrderStatus, setWechatDeliveryJumpPath } from '@/api/order.js'
 import { searchDeliveryList } from '@/data/delivery-list.js'
-import { approveRefund as approveRefundApi, rejectRefund as rejectRefundApi, auditRefund } from '../../api/refund.js'
+import { approveRefund as approveRefundApi, rejectRefund as rejectRefundApi, auditRefund, getRefundProgress } from '../../api/refund.js'
 import { getProductDetail } from '@/api/product.js'
 import config from '@/utils/config.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
+import {
+  normalizeRefundInfo,
+  resolveMerchantOrderStatusForRefund,
+  isRefundAwaitingMerchantReview,
+  matchesAfterSaleTab,
+  hydrateAfterSaleOrdersWithRefundProgress
+} from '@/utils/merchantRefund.js'
+
+/** 從平台 /merchant/orders 響應解析訂單陣列 */
+function extractMerchantOrderList(res) {
+  let orderList = []
+  if (res && typeof res === 'object') {
+    if (res.code === 200 || res.code === 0) {
+      if (Array.isArray(res.data?.list)) orderList = res.data.list
+      else if (Array.isArray(res.data?.orders)) orderList = res.data.orders
+      else if (Array.isArray(res.data)) orderList = res.data
+      else if (res.data && typeof res.data === 'object') {
+        for (const key in res.data) {
+          if (Array.isArray(res.data[key])) {
+            orderList = res.data[key]
+            break
+          }
+        }
+      }
+    } else if (res.data) {
+      if (Array.isArray(res.data?.list)) orderList = res.data.list
+      else if (Array.isArray(res.data)) orderList = res.data
+    } else if (Array.isArray(res.list)) {
+      orderList = res.list
+    } else if (Array.isArray(res)) {
+      orderList = res
+    }
+  }
+  return orderList
+}
+
+/** 合併「退款中+已退款」兩路請求時按訂單號去重，保留時間較新的一條 */
+function dedupeRawMerchantOrderRows(rows) {
+  const map = new Map()
+  for (const row of rows) {
+    const no = String(row.order_number || row.order_no || row.orderNo || row.id || '').trim()
+    if (!no) continue
+    const prev = map.get(no)
+    if (!prev) {
+      map.set(no, row)
+      continue
+    }
+    const ta = new Date(prev.created_at || prev.createTime || prev.created_time || 0).getTime()
+    const tb = new Date(row.created_at || row.createTime || row.created_time || 0).getTime()
+    if (tb >= ta) map.set(no, row)
+  }
+  return [...map.values()]
+}
 
 /**
  * 姓名脱敏：显示第一个字符 + **
@@ -367,16 +382,8 @@ const filteredOrders = computed(() => {
     // 待收货：pending_recv（商家已发货）
     result = result.filter(order => order.status === 'pending_recv')
   } else if (currentFilter.value === 'refunding') {
-    // 待售后：refunding（退款中）
-    console.log('[订单筛选] 筛选 refunding 状态订单，总订单数:', result.length)
-    result = result.filter(order => {
-      const match = order.status === 'refunding'
-      if (match) {
-        console.log('[订单筛选] ✅ 找到 refunding 订单:', order.orderNo, '状态:', order.status)
-      }
-      return match
-    })
-    console.log('[订单筛选] 筛选后 refunding 订单数量:', result.length)
+    // 待售后：與後端 status 對齊，並兼容主狀態仍為 completed 但帶未結束 refund_info 的線下單
+    result = result.filter((order) => matchesAfterSaleTab(order))
   } else if (currentFilter.value === 'completed') {
     // 已完成
     result = result.filter(order => order.status === 'completed')
@@ -428,10 +435,14 @@ const getStatusText = (status) => {
 }
 
 /**
- * 筛选订单
+ * 筛选订单（切換 Tab 時向後端帶 status 重新拉取，避免只在已載入的「全部」裡客戶端篩選）
  */
 const filterOrders = (filter) => {
+  if (currentFilter.value === filter) return
   currentFilter.value = filter
+  page.value = 1
+  hasMore.value = true
+  loadOrders(false)
 }
 
 /**
@@ -542,12 +553,21 @@ const shipOrder = async (order) => {
   currentShipOrder.value = order
   trackingNumber.value = ''
   shipItemDesc.value = ''
-  shipLogisticsType.value = 0
-  logisticsTypeIndex.value = 0
+  
+  // 根据订单配送方式自动设置物流类型
+  if (order.deliveryWay === 'pickup') {
+    shipLogisticsType.value = 1
+    logisticsTypeIndex.value = 1
+  } else {
+    shipLogisticsType.value = 0
+    logisticsTypeIndex.value = 0
+  }
+  
   selectedDelivery.value = null
   showDeliveryPicker.value = false
   deliverySearchKeyword.value = ''
   showShipModal.value = true
+
   try {
     const res = await getDeliveryList()
     const raw = (res && res.data) ? res.data : (Array.isArray(res) ? res : [])
@@ -567,24 +587,19 @@ const shipOrder = async (order) => {
  */
 const confirmShip = async () => {
   if (!currentShipOrder.value) return
-  
   const order = currentShipOrder.value
   const orderNumber = order.orderNo || order.order_number || String(order.id)
   const trackingNum = trackingNumber.value.trim()
   const orderStatus = order.status
-  
-  // 发货前检查订单支付状态（只有 pending_ship 状态可以发货）
+
   if (orderStatus !== 'pending_ship') {
-    uni.showToast({ 
-      title: '该订单状态不允许发货', 
-      icon: 'none',
-      duration: 2500
-    })
+    uni.showToast({ title: '该订单状态不允许发货', icon: 'none', duration: 2500 })
     showShipModal.value = false
     return
   }
-  
-  const logisticsType = shipLogisticsType.value
+
+  // 直接从界面选择的索引获取物流类型（方案一核心修改）
+  const logisticsType = logisticsTypeOptions[logisticsTypeIndex.value].value
   const express_company = logisticsType === 0 && selectedDelivery.value ? selectedDelivery.value.code : ''
   if (logisticsType === 0 && !trackingNum) {
     uni.showToast({ title: '请填写物流单号', icon: 'none' })
@@ -594,10 +609,10 @@ const confirmShip = async () => {
     uni.showToast({ title: '请选择快递公司', icon: 'none' })
     return
   }
-  
+
   uni.showLoading({ title: '处理中...' })
-  showShipModal.value = false
-  
+  showShipModal.value = false  // 先关闭弹窗
+
   try {
     const res = await shipOrderApi(orderNumber, {
       tracking_number: trackingNum,
@@ -606,13 +621,10 @@ const confirmShip = async () => {
       logistics_type: logisticsType,
       item_desc: shipItemDesc.value.trim() || undefined
     })
-    
+
     // 检查明确的失败标识
     if (res && res.ok === false) {
-      // 根据订单状态判断错误原因
       let errorMsg = res.msg || res.message
-      
-      // 如果没有明确的错误信息，根据订单状态推断
       if (!errorMsg) {
         if (orderStatus === 'pending_pay') {
           errorMsg = '该订单尚未支付，无法发货'
@@ -620,15 +632,12 @@ const confirmShip = async () => {
           errorMsg = '发货失败，请检查订单号是否正确'
         }
       }
-      
       throw new Error(errorMsg)
     }
-    
-    // 检查业务状态码 (假设非200为失败，视具体后端规范而定)
+
+    // 检查业务状态码（假设非200为失败，视具体后端规范而定）
     if (res && res.code && res.code !== 200) {
       let errorMsg = res.msg || res.message
-      
-      // 如果没有明确的错误信息，根据订单状态推断
       if (!errorMsg) {
         if (orderStatus === 'pending_pay') {
           errorMsg = '该订单尚未支付，无法发货'
@@ -636,21 +645,21 @@ const confirmShip = async () => {
           errorMsg = '发货失败，请检查订单号是否正确'
         }
       }
-      
       throw new Error(errorMsg)
     }
-    
+
     uni.hideLoading()
     uni.showToast({ title: '发货成功', icon: 'success' })
-    await loadOrders()
+    await loadOrders() // 刷新列表
   } catch (error) {
     uni.hideLoading()
     console.error('发货失败:', error)
-    uni.showToast({ 
-      title: error.message || '发货失败，请稍后重试', 
+    uni.showToast({
+      title: error.message || '发货失败，请稍后重试',
       icon: 'none',
       duration: 2500
     })
+    // 如果发货失败，重新打开弹窗让用户修改？可选，但会增加复杂度，暂不自动打开
   }
 }
 
@@ -813,18 +822,10 @@ const getRefundStatusText = (status) => {
  * 如果退款被拒绝，显示"已拒绝"而不是"退款中"
  */
 const getDisplayStatus = (order) => {
-  // 检查退款状态
-  if (order.status === 'refunding') {
-    const refundStatus = order.refund_info?.status || order.refund?.status
-    console.log('[订单列表] 订单状态检查:', {
-      orderNo: order.orderNo,
-      orderStatus: order.status,
-      refundInfo: order.refund_info,
-      refundStatus: refundStatus
-    })
-    if (refundStatus === 'rejected') {
-      return 'rejected'
-    }
+  // 优先根据退款状态判断
+  const refundStatus = order.refund_info?.status || order.refund?.status
+  if (refundStatus === 'rejected') {
+    return 'rejected'
   }
   return order.status
 }
@@ -834,12 +835,9 @@ const getDisplayStatus = (order) => {
  * 如果退款被拒绝，显示"已拒绝"而不是"退款中"
  */
 const getDisplayStatusText = (order) => {
-  // 检查退款状态
-  if (order.status === 'refunding') {
-    const refundStatus = order.refund_info?.status || order.refund?.status
-    if (refundStatus === 'rejected') {
-      return '已拒绝'
-    }
+  const refundStatus = order.refund_info?.status || order.refund?.status
+  if (refundStatus === 'rejected') {
+    return '已拒绝'
   }
   return getStatusText(order.status)
 }
@@ -923,78 +921,55 @@ const loadOrders = async (append = false) => {
     if (!append) {
       uni.showLoading({ title: '加载中...' })
     }
-    
-    const res = await getMerchantOrders({
-      page: page.value,
-      page_size: pageSize.value
-      // 不传 status 参数，获取全部订单，由前端筛选
-    })
-    
-    // 移除大量日志输出以提升性能
+
+    let orderList = []
+    const tab = currentFilter.value
+    const baseParams = { page: page.value, page_size: pageSize.value }
+
+    // 待售後：線下付完主狀態常為 completed，僅查 refunding/refunded 會漏單，需一併拉 completed 再依退款資訊篩選
+    if (tab === 'refunding') {
+      const [r1, r2, r3] = await Promise.all([
+        getMerchantOrders({ ...baseParams, status: 'refunding' }),
+        getMerchantOrders({ ...baseParams, status: 'refunded' }),
+        getMerchantOrders({ ...baseParams, status: 'completed' })
+      ])
+      const list1 = extractMerchantOrderList(r1)
+      const list2 = extractMerchantOrderList(r2)
+      const list3 = extractMerchantOrderList(r3)
+      orderList = dedupeRawMerchantOrderRows([...list1, ...list2, ...list3])
+      hasMore.value =
+        list1.length >= pageSize.value ||
+        list2.length >= pageSize.value ||
+        list3.length >= pageSize.value
+    } else {
+      const params = { ...baseParams }
+      if (tab !== 'all') {
+        params.status = tab
+      }
+      const res = await getMerchantOrders(params)
+      orderList = extractMerchantOrderList(res)
+      hasMore.value = orderList.length >= pageSize.value
+    }
+
     if (!append) {
       uni.hideLoading()
     }
-    
-    // 支持多种响应格式
-    let orderList = []
-    
-    // 检查响应格式
-    if (res && typeof res === 'object') {
-      // 格式1: { code: 200, data: { list: [...] } }
-      if (res.code === 200 || res.code === 0) {
-        if (Array.isArray(res.data?.list)) {
-          orderList = res.data.list
-          console.log('[商家订单] 从 res.data.list 解析到', orderList.length, '个订单')
-        } else if (Array.isArray(res.data?.orders)) {
-          orderList = res.data.orders
-          console.log('[商家订单] 从 res.data.orders 解析到', orderList.length, '个订单')
-        } else if (Array.isArray(res.data)) {
-          orderList = res.data
-          console.log('[商家订单] 从 res.data 解析到', orderList.length, '个订单')
-        } else if (res.data && typeof res.data === 'object') {
-          // 可能是 { code: 200, data: { orders: [...] } } 或其他嵌套格式
-          console.log('[商家订单] res.data 是对象，尝试查找数组字段')
-          for (const key in res.data) {
-            if (Array.isArray(res.data[key])) {
-              orderList = res.data[key]
-              console.log('[商家订单] 从 res.data.' + key + ' 解析到', orderList.length, '个订单')
-              break
-            }
-          }
-        }
-      }
-      // 格式2: { data: { list: [...] } } 或 { data: [...] }
-      else if (res.data) {
-        if (Array.isArray(res.data?.list)) {
-          orderList = res.data.list
-          console.log('[商家订单] 从 res.data.list (无code) 解析到', orderList.length, '个订单')
-        } else if (Array.isArray(res.data)) {
-          orderList = res.data
-          console.log('[商家订单] 从 res.data (无code) 解析到', orderList.length, '个订单')
-        }
-      }
-      // 格式3: 直接是数组
-      else if (Array.isArray(res)) {
-        orderList = res
-        console.log('[商家订单] 响应直接是数组，解析到', orderList.length, '个订单')
-      }
-    }
-    
+
     console.log('[商家订单] 最终解析到', orderList.length, '个订单')
-    
+
     if (orderList.length === 0) {
-      console.warn('[商家订单] ⚠️ 没有解析到任何订单，原始响应:', res)
+      console.warn('[商家订单] ⚠️ 没有解析到任何订单')
     }
     
     // 处理订单数据，确保格式统一
-    const processedOrders = await Promise.all(orderList.map(async order => {
+    let processedOrders = await Promise.all(orderList.map(async order => {
       // 标准化订单状态（用于判断是否为退款中）
       const rawStatus = order.status || order.order_status || order.orderStatus || ''
       const normalizedStatus = rawStatus ? String(rawStatus).toLowerCase().trim() : ''
       
       // 优先使用订单数据中已有的退款信息，不立即调用API（提升加载速度）
       // 退款详情可以在订单详情页或需要时再加载
-      const refundInfo = order.refund_info || order.refund || null
+      const refund_info = normalizeRefundInfo(order.refund_info || order.refund || null, order)
       
       // 处理图片URL的工具函数
       const processImageUrl = (img) => {
@@ -1131,6 +1106,7 @@ const loadOrders = async (append = false) => {
       if (orderStatus === 'paid' || orderStatus === 'confirmed') {
         orderStatus = 'pending_ship'
       }
+      orderStatus = resolveMerchantOrderStatusForRefund(orderStatus, refund_info)
       
       // 获取地址信息（用于导出）
       let addressText = ''
@@ -1154,6 +1130,7 @@ const loadOrders = async (append = false) => {
         id: order.id,
         orderNo,
         status: orderStatus, // 使用标准化后的状态
+		deliveryWay: order.delivery_way || order.deliveryWay || 'platform', // ✅ 新增
         customerName: customerName,
         customerPhone: customerPhone,
         address: addressText, // 保存地址文本
@@ -1163,10 +1140,27 @@ const loadOrders = async (append = false) => {
         actualAmount: order.actual_amount || order.actualAmount || order.total_amount || order.totalAmount || 0,
         createTime: order.created_at || order.createTime || order.created_time || Date.now(),
         // 退款信息（如果有）
-        refund_info: refundInfo
+        refund_info,
+        _refundRootForSniff: {
+          refund_status: order.refund_status ?? order.refundStatus,
+          refund_reason: order.refund_reason ?? order.refundReason ?? order.refund_reason_code,
+          after_sale_id: order.after_sale_id ?? order.afterSaleId,
+          refund_apply_id: order.refund_apply_id,
+          has_pending_refund: order.has_pending_refund,
+          refund_pending: order.refund_pending,
+          pending_refund: order.pending_refund
+        }
       }
     }))
-    
+
+    if (tab === 'refunding') {
+      await hydrateAfterSaleOrdersWithRefundProgress(processedOrders, getRefundProgress, {
+        maxCandidates: 40,
+        concurrency: 6
+      })
+      processedOrders = processedOrders.filter((o) => matchesAfterSaleTab(o))
+    }
+
     // 根据 append 参数决定是替换还是追加
     if (append) {
       orders.value = [...orders.value, ...processedOrders]
@@ -1186,11 +1180,6 @@ const loadOrders = async (append = false) => {
       }
     })
     orders.value = Object.values(byOrderNo).sort((a, b) => toTime(b.createTime) - toTime(a.createTime))
-    
-    // 判断是否还有更多数据：如果返回的数据量小于每页大小，说明没有更多了
-    hasMore.value = orderList.length >= pageSize.value
-    
-    // 移除日志输出以提升性能
   } catch (error) {
     uni.hideLoading()
     console.error('[商家订单] ❌ 获取订单列表失败:', error)

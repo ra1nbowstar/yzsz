@@ -310,10 +310,61 @@
 import { ref, computed, onMounted } from 'vue'
 import { getShopOrders, shipOrder as shipOrderApi, getDeliveryList, updateOrderStatus } from '@/api/order.js'
 import { searchDeliveryList } from '@/data/delivery-list.js'
-import { approveRefund as approveRefundApi, rejectRefund as rejectRefundApi, auditRefund } from '../../api/refund.js'
+import { approveRefund as approveRefundApi, rejectRefund as rejectRefundApi, auditRefund, getRefundProgress } from '../../api/refund.js'
 import { getProductDetail } from '@/api/product.js'
 import config from '@/utils/config.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
+import {
+  normalizeRefundInfo,
+  resolveMerchantOrderStatusForRefund,
+  matchesAfterSaleTab,
+  hydrateAfterSaleOrdersWithRefundProgress
+} from '@/utils/merchantRefund.js'
+
+/** 從店鋪訂單接口響應解析訂單陣列 */
+function extractShopOrderList(res) {
+  let orderList = []
+  if (res && typeof res === 'object') {
+    if (res.code === 200 || res.code === 0) {
+      if (Array.isArray(res.data?.list)) orderList = res.data.list
+      else if (Array.isArray(res.data?.orders)) orderList = res.data.orders
+      else if (Array.isArray(res.data)) orderList = res.data
+      else if (res.data && typeof res.data === 'object') {
+        for (const key in res.data) {
+          if (Array.isArray(res.data[key])) {
+            orderList = res.data[key]
+            break
+          }
+        }
+      }
+    } else if (res.data) {
+      if (Array.isArray(res.data?.list)) orderList = res.data.list
+      else if (Array.isArray(res.data)) orderList = res.data
+    } else if (Array.isArray(res.list)) {
+      orderList = res.list
+    } else if (Array.isArray(res)) {
+      orderList = res
+    }
+  }
+  return orderList
+}
+
+function dedupeRawShopOrderRows(rows) {
+  const map = new Map()
+  for (const row of rows) {
+    const no = String(row.order_number || row.order_no || row.orderNo || row.id || '').trim()
+    if (!no) continue
+    const prev = map.get(no)
+    if (!prev) {
+      map.set(no, row)
+      continue
+    }
+    const ta = new Date(prev.created_at || prev.createTime || prev.created_time || 0).getTime()
+    const tb = new Date(row.created_at || row.createTime || row.created_time || 0).getTime()
+    if (tb >= ta) map.set(no, row)
+  }
+  return [...map.values()]
+}
 
 /**
  * 姓名脱敏：显示第一个字符 + **
@@ -350,6 +401,9 @@ const orderStats = ref({
   // 已完成：completed
   completed: 0
 })
+
+/** 上次在「全部」Tab 載入時的統計（切到子 Tab 時列表變少，其餘數字沿用此快照） */
+const lastAllTabStats = ref(null)
 
 import { onLoad } from '@dcloudio/uni-app'
 
@@ -405,16 +459,7 @@ const filteredOrders = computed(() => {
     // 待收货：pending_recv（商家已发货）
     result = result.filter(order => order.status === 'pending_recv')
   } else if (currentFilter.value === 'refunding') {
-    // 待售后：refunding（退款中）
-    console.log('[商家订单筛选] 筛选 refunding 状态订单，总订单数:', result.length)
-    result = result.filter(order => {
-      const match = order.status === 'refunding'
-      if (match) {
-        console.log('[商家订单筛选] ✅ 找到 refunding 订单:', order.orderNo, '状态:', order.status)
-      }
-      return match
-    })
-    console.log('[商家订单筛选] 筛选后 refunding 订单数量:', result.length)
+    result = result.filter((order) => matchesAfterSaleTab(order))
   } else if (currentFilter.value === 'completed') {
     // 已完成
     result = result.filter(order => order.status === 'completed')
@@ -466,10 +511,14 @@ const getStatusText = (status) => {
 }
 
 /**
- * 筛选订单
+ * 筛选订单（切換 Tab 時帶 status 重新請求，避免只在已載入的「全部」裡篩選）
  */
 const filterOrders = (filter) => {
+  if (currentFilter.value === filter) return
   currentFilter.value = filter
+  page.value = 1
+  hasMore.value = true
+  loadOrders(false)
 }
 
 /**
@@ -899,85 +948,59 @@ const loadingMore = ref(false)
 const loadOrders = async (append = false) => {
   try {
     console.log('[商家订单] 开始加载订单，筛选条件:', currentFilter.value)
-    uni.showLoading({ title: '加载中...' })
-    
-    const res = await getShopOrders({
-      page: page.value,
-      page_size: pageSize.value
-      // 不传 status 参数，获取全部订单，由前端筛选
-    })
-    
-    console.log('[商家订单] API完整响应:', JSON.stringify(res, null, 2))
-    
-    uni.hideLoading()
-    
-    // 支持多种响应格式
-    let orderList = []
-    
-    // 检查响应格式
-    if (res && typeof res === 'object') {
-      // 格式1: { code: 200, data: { list: [...] } }
-      if (res.code === 200 || res.code === 0) {
-        if (Array.isArray(res.data?.list)) {
-          orderList = res.data.list
-          console.log('[商家订单] 从 res.data.list 解析到', orderList.length, '个订单')
-        } else if (Array.isArray(res.data?.orders)) {
-          orderList = res.data.orders
-          console.log('[商家订单] 从 res.data.orders 解析到', orderList.length, '个订单')
-        } else if (Array.isArray(res.data)) {
-          orderList = res.data
-          console.log('[商家订单] 从 res.data 解析到', orderList.length, '个订单')
-        } else if (res.data && typeof res.data === 'object') {
-          // 可能是 { code: 200, data: { orders: [...] } } 或其他嵌套格式
-          console.log('[商家订单] res.data 是对象，尝试查找数组字段')
-          for (const key in res.data) {
-            if (Array.isArray(res.data[key])) {
-              orderList = res.data[key]
-              console.log('[商家订单] 从 res.data.' + key + ' 解析到', orderList.length, '个订单')
-              break
-            }
-          }
-        }
-      }
-      // 格式2: { data: { list: [...] } } 或 { data: [...] }
-      else if (res.data) {
-        if (Array.isArray(res.data?.list)) {
-          orderList = res.data.list
-          console.log('[商家订单] 从 res.data.list (无code) 解析到', orderList.length, '个订单')
-        } else if (Array.isArray(res.data)) {
-          orderList = res.data
-          console.log('[商家订单] 从 res.data (无code) 解析到', orderList.length, '个订单')
-        }
-      }
-      // 格式3: 图1 接口可能直接返回 { list, pagination, statistics }
-      else if (Array.isArray(res.list)) {
-        orderList = res.list
-        console.log('[商家订单] 从 res.list 解析到', orderList.length, '个订单')
-      }
-      // 格式4: 直接是数组
-      else if (Array.isArray(res)) {
-        orderList = res
-        console.log('[商家订单] 响应直接是数组，解析到', orderList.length, '个订单')
-      }
+    if (!append) {
+      uni.showLoading({ title: '加载中...' })
     }
-    
+
+    let orderList = []
+    const tab = currentFilter.value
+    const baseParams = { page: page.value, page_size: pageSize.value }
+
+    if (tab === 'refunding') {
+      const [r1, r2, r3] = await Promise.all([
+        getShopOrders({ ...baseParams, status: 'refunding' }),
+        getShopOrders({ ...baseParams, status: 'refunded' }),
+        getShopOrders({ ...baseParams, status: 'completed' })
+      ])
+      const list1 = extractShopOrderList(r1)
+      const list2 = extractShopOrderList(r2)
+      const list3 = extractShopOrderList(r3)
+      orderList = dedupeRawShopOrderRows([...list1, ...list2, ...list3])
+      hasMore.value =
+        list1.length >= pageSize.value ||
+        list2.length >= pageSize.value ||
+        list3.length >= pageSize.value
+    } else {
+      const params = { ...baseParams }
+      if (tab !== 'all') {
+        params.status = tab
+      }
+      const res = await getShopOrders(params)
+      orderList = extractShopOrderList(res)
+      hasMore.value = orderList.length >= pageSize.value
+    }
+
+    if (!append) {
+      uni.hideLoading()
+    }
+
     console.log('[商家订单] 最终解析到', orderList.length, '个订单')
-    
+
     if (orderList.length === 0) {
-      console.warn('[商家订单] ⚠️ 没有解析到任何订单，原始响应:', res)
+      console.warn('[商家订单] ⚠️ 没有解析到任何订单')
     }
     
     // 处理订单数据，确保格式统一
     // 优化：先处理所有订单的基本信息，退款信息优先使用订单数据中的，不立即调用API
     // 商品图片通过API异步加载，先显示订单列表，再更新图片
-    const processedOrders = await Promise.all(orderList.map(async order => {
+    let processedOrders = await Promise.all(orderList.map(async order => {
       // 标准化订单状态（用于判断是否为退款中）
       const rawStatus = order.status || order.order_status || order.orderStatus || ''
       const normalizedStatus = rawStatus ? String(rawStatus).toLowerCase().trim() : ''
       
       // 优先使用订单数据中已有的退款信息，不立即调用API（提升加载速度）
       // 退款详情可以在订单详情页或需要时再加载
-      const refundInfo = order.refund_info || order.refund || null
+      const refund_info = normalizeRefundInfo(order.refund_info || order.refund || null, order)
       
       // 处理图片URL的工具函数
       const processImageUrl = (img) => {
@@ -1115,6 +1138,7 @@ const loadOrders = async (append = false) => {
       if (orderStatus === 'paid' || orderStatus === 'confirmed') {
         orderStatus = 'pending_ship'
       }
+      orderStatus = resolveMerchantOrderStatusForRefund(orderStatus, refund_info)
       if (orderStatus) {
         console.log(`[商家订单状态] 订单 ${order.order_number || order.order_no || order.orderNo || order.id} 原始状态:`, order.status, '标准化后:', orderStatus)
       }
@@ -1133,10 +1157,27 @@ const loadOrders = async (append = false) => {
         actualAmount: order.actual_amount || order.actualAmount || order.total_amount || order.totalAmount || 0,
         createTime: order.created_at || order.createTime || order.created_time || Date.now(),
         // 退款信息（如果有）
-        refund_info: refundInfo
+        refund_info,
+        _refundRootForSniff: {
+          refund_status: order.refund_status ?? order.refundStatus,
+          refund_reason: order.refund_reason ?? order.refundReason ?? order.refund_reason_code,
+          after_sale_id: order.after_sale_id ?? order.afterSaleId,
+          refund_apply_id: order.refund_apply_id,
+          has_pending_refund: order.has_pending_refund,
+          refund_pending: order.refund_pending,
+          pending_refund: order.pending_refund
+        }
       }
     }))
-    
+
+    if (tab === 'refunding') {
+      await hydrateAfterSaleOrdersWithRefundProgress(processedOrders, getRefundProgress, {
+        maxCandidates: 40,
+        concurrency: 6
+      })
+      processedOrders = processedOrders.filter((o) => matchesAfterSaleTab(o))
+    }
+
     // 根据 append 参数决定是替换还是追加
     if (append) {
       orders.value = [...orders.value, ...processedOrders]
@@ -1157,24 +1198,30 @@ const loadOrders = async (append = false) => {
     })
     orders.value = Object.values(byOrderNo).sort((a, b) => toTime(b.createTime) - toTime(a.createTime))
     
-    // 更新订单统计
-    const refundingOrders = orders.value.filter(o => o.status === 'refunding')
-    
-    orderStats.value = {
-      // 待付款：pending_pay（默认值，下单后的初始状态）
-      pendingPayment: orders.value.filter(o => o.status === 'pending_pay').length,
-      // 待收货：pending_recv（商家已发货）
-      toReceive: orders.value.filter(o => o.status === 'pending_recv').length,
-      // 待发货：pending_ship（支付完成）
-      toShip: orders.value.filter(o => o.status === 'pending_ship').length,
-      afterSale: refundingOrders.length, // 使用上面筛选的结果
-      completed: orders.value.filter(o => o.status === 'completed').length
+    // 更新订单统计：子 Tab 僅拉部分訂單時，除「待售後」外沿用上次「全部」快照
+    const tabNow = currentFilter.value
+    const nextStats = {
+      pendingPayment: orders.value.filter((o) => o.status === 'pending_pay').length,
+      toReceive: orders.value.filter((o) => o.status === 'pending_recv').length,
+      toShip: orders.value.filter((o) => o.status === 'pending_ship').length,
+      afterSale: orders.value.filter((o) => matchesAfterSaleTab(o)).length,
+      completed: orders.value.filter((o) => o.status === 'completed').length
     }
-    
-    // 判断是否还有更多数据：如果返回的数据量小于每页大小，说明没有更多了
-    hasMore.value = orderList.length >= pageSize.value
-    
-    // 移除日志输出以提升性能
+    if (tabNow === 'all') {
+      lastAllTabStats.value = { ...nextStats }
+      orderStats.value = nextStats
+    } else {
+      orderStats.value = {
+        ...(lastAllTabStats.value || {
+          pendingPayment: 0,
+          toReceive: 0,
+          toShip: 0,
+          afterSale: 0,
+          completed: 0
+        }),
+        afterSale: nextStats.afterSale
+      }
+    }
   } catch (error) {
     uni.hideLoading()
     console.error('[商家订单] ❌ 获取订单列表失败:', error)

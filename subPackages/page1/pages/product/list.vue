@@ -536,12 +536,12 @@ const loadProducts = async () => {
     
     // 从所有商品数据中提取分类（在过滤之前，确保能获取所有分类）
     // 同时包含预设的分类列表，确保所有分类都能显示
-    const presetCategories = ['服装鞋帽', '数码电器', '美妆护肤', '母婴用品', '家居生活', '运动户外', '图书文具', '食品饮料', '其他']
+    const presetCategories = ['服装鞋帽', '数码电器', '美妆护肤', '母婴用品', '家居生活', '运动户外', '食品饮料', '生鲜', '其他']
     const categorySet = new Set(presetCategories)
     
     // 从商品数据中提取实际存在的分类
     productList.forEach(p => {
-      if (p.category && p.category.trim()) {
+      if (p.category && p.category.trim() && p.category.trim() !== '图书文具') {
         categorySet.add(p.category.trim())
       }
     })
@@ -569,7 +569,7 @@ const loadProducts = async () => {
       const isOnSale = p.status === 1 || p.status === 'on_sale' || p.status === 'active'
       // 排除轮播图商品（名称包含"轮播图"或SKU以"BANNER-"开头）
       const productName = (p.name || '').toLowerCase()
-      const isBannerByName = productName.includes('轮播图')
+      const isBannerByName = productName.includes('轮播图'	)
       let isBannerBySku = false
       if (p.skus && p.skus.length > 0) {
         const skuCode = (p.skus[0].sku_code || p.skus[0].sku || '').toUpperCase()

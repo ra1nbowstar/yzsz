@@ -1477,3 +1477,25 @@ export const buyNow = (productId, quantity = 1) => {
   return request.post('/order/buyNow', { productId, quantity })
 }
 
+// 获取首页推荐商品列表
+export const getHomeProducts = () => {
+  return request.get('/api/products/home')
+}
+
+/**
+ * 批量设置商品首页推荐状态
+ * @param {Array} items 商品项数组，格式 [{ product_id, is_recommend }]
+ * @returns {Promise}
+ */
+export const setHomeRecommend = (items) => {
+  return request.put('/api/products/home-recommend', { items })
+}
+
+/**
+ * 单个商品设置首页推荐（封装批量接口）
+ * @param {Number} productId 商品ID
+ * @param {Boolean} isRecommend 是否推荐
+ */
+export const updateHomeRecommend = (productId, isRecommend) => {
+  return setHomeRecommend([{ product_id: productId, is_recommend: isRecommend }])
+}

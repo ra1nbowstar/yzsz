@@ -109,30 +109,25 @@ const refundableStatuses = ['pending_ship', 'pending_recv', 'completed']
  * @returns {Boolean} 是否可以申请退款
  */
 const canCompletedOrderRefund = (order) => {
-	if (order.status !== 'completed') {
-		return true // 非已完成订单，按原逻辑处理
-	}
-	
-	// 1. 检查是否已经申请过退款
-	if (order.refund_status || order.refundStatus) {
-		return false // 已经申请过退款，不能再次申请
-	}
-	
-	// 2. 检查订单创建时间是否超过15天
-	if (order.created_at || order.createTime || order.create_time) {
-		const createTimeStr = order.created_at || order.createTime || order.create_time
-		const createTimeStamp = new Date(createTimeStr).getTime()
-		if (createTimeStamp > 0) {
-			const now = Date.now()
-			const daysDiff = (now - createTimeStamp) / (1000 * 60 * 60 * 24) // 转换为天数
-			if (daysDiff > 15) {
-				return false // 超过15天，不能申请退款
-			}
-		}
-	}
-	
-	// 15天内且未申请过退款，可以申请
-	return true
+  if (order.status !== 'completed') return true
+
+  // 检查是否已有退款信息且状态不是 rejected
+  const refundStatus = order.refund_status || order.refundStatus
+  if (refundStatus && refundStatus !== 'rejected') {
+    return false // 已有正在处理或已成功的退款，不能再次申请
+  }
+
+  // 检查15天限制
+  if (order.created_at || order.createTime || order.create_time) {
+    const createTimeStr = order.created_at || order.createTime || order.create_time
+    const createTimeStamp = new Date(createTimeStr).getTime()
+    if (createTimeStamp > 0) {
+      const now = Date.now()
+      const daysDiff = (now - createTimeStamp) / (1000 * 60 * 60 * 24)
+      return daysDiff <= 15
+    }
+  }
+  return true
 }
 
 onLoad(async (options) => {
@@ -279,6 +274,7 @@ const submitAfterSale = async () => {
           })
           
           // 调用申请退款接口 (合并参数名为 reason_code)
+          // 调用申请退款接口
           const result = await applyRefund({
             order_number: orderNo.value,
             refund_type: refundType,
@@ -286,15 +282,6 @@ const submitAfterSale = async () => {
           })
           
           console.log('[申请退款] 申请提交成功:', result)
-          
-          // 申请退款提交成功后，调用订单状态接口更新为退款中（refunding），以便商家在"待售后"目录中查看
-          try {
-            await updateOrderStatus(orderNo.value, 'refunding', '用户申请售后')
-            console.log('[申请退款] 订单状态已更新为退款中')
-          } catch (statusError) {
-            console.error('[申请退款] 更新订单状态失败:', statusError)
-            // 状态更新失败不影响申请退款的成功提示
-          }
           
           uni.hideLoading()
 

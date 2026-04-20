@@ -120,6 +120,19 @@ const getAmountClass = (item) => {
   return Number(val) >= 0 ? 'positive' : 'negative'
 }
 
+/** 與 formatTime 一致的可選時間欄位，用於排序 */
+const getItemTimestamp = (item) => {
+  const raw = item.created_at || item.create_time || item.time || item.flow_time
+  if (!raw) return 0
+  const t = new Date(raw).getTime()
+  return Number.isFinite(t) ? t : 0
+}
+
+/** 依時間新到舊排序（已載入的合併列表） */
+const sortPointsLogByTimeDesc = (arr) => {
+  return [...arr].sort((a, b) => getItemTimestamp(b) - getItemTimestamp(a))
+}
+
 /**
  * 加载雨点流水
  */
@@ -189,12 +202,9 @@ const loadPointsLog = async (isMore = false) => {
     
     console.log('[雨点流水] 解析到', list.length, '条记录, 总数:', total.value)
     
-    if (isMore) {
-      pointsLog.value = [...pointsLog.value, ...list]
-    } else {
-      pointsLog.value = list
-    }
-    
+    const merged = isMore ? [...pointsLog.value, ...list] : [...list]
+    pointsLog.value = sortPointsLogByTimeDesc(merged)
+
     // 优化 hasMore 判断：优先使用总数，否则根据返回数据量判断
     if (total.value > 0) {
       hasMore.value = pointsLog.value.length < total.value

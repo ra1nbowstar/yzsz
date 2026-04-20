@@ -200,6 +200,7 @@ export const createJsapiOrder = (data) => {
  * @param {Object} data.address 收货地址（兼容旧版本，已废弃）
  */
 export const createOrder = (data) => {
+  console.log('[createOrder] 接收到的 data:', data);  // 新增
   // 构建新的接口格式
   const requestData = {
     user_id: data.user_id,
@@ -256,23 +257,29 @@ export const createOrder = (data) => {
     console.warn('[订单创建] 警告：同时传递了 items 和 buy_now_items，已删除 items 字段，仅使用 buy_now_items')
   }
 
-  // 优惠券与积分：创建订单时透传给后端，便于核销与金额校验
-  if (data.coupon_id != null && data.coupon_id !== '') {
-    requestData.coupon_id = data.coupon_id
-  }
-  // 新方案：前端统一使用 points_to_use 表示使用的积分数量（单位：元）
-  if (data.points_to_use != null) {
-    requestData.points_to_use = data.points_to_use
-  }
-  // 兼容旧字段 pointsUsed（若还有老页面在用）
-  if (data.pointsUsed != null) {
-    requestData.points_used = data.pointsUsed
-  }
-  // 积分抵扣金额（单位：元），用于展示与校验
-  if (data.pointsDiscount != null) {
-    requestData.points_discount = data.pointsDiscount
-  }
-
+    // 优惠券与积分：创建订单时透传给后端，便于核销与金额校验
+    // 多张优惠券数组（优先使用）
+    if (data.coupon_ids && Array.isArray(data.coupon_ids) && data.coupon_ids.length > 0) {
+      requestData.coupon_ids = data.coupon_ids
+    }
+    // 单张优惠券（兼容旧版）
+    else if (data.coupon_id != null && data.coupon_id !== '') {
+      requestData.coupon_id = data.coupon_id
+    }
+    // 新方案：前端统一使用 points_to_use 表示使用的积分数量（单位：元）
+    if (data.points_to_use != null) {
+      requestData.points_to_use = data.points_to_use
+    }
+    // 兼容旧字段 pointsUsed（若还有老页面在用）
+    if (data.pointsUsed != null) {
+      requestData.points_used = data.pointsUsed
+    }
+    // 积分抵扣金额（单位：元），用于展示与校验
+    if (data.pointsDiscount != null) {
+      requestData.points_discount = data.pointsDiscount
+    }
+  console.log('[createOrder] 接收到的 data.coupon_ids:', data.coupon_ids);	
+  console.log('[createOrder] 最终请求数据:', JSON.stringify(requestData, null, 2));
   return request.post('/order/create', requestData)
 }
 
@@ -815,4 +822,44 @@ export const getOfflineOrderList = (params = {}) => {
   return request.get('/api/offline/dingdan/liebiao', params)
 }
 
+// api/order.js
+
+/**
+ * 导出日报表/月报表
+ * @param {Object} params { start_date, end_date, include_detail }
+ * @returns {Promise} 返回文件二进制数据
+ */
+export const exportDailySummary = (params) => {
+  return new Promise((resolve, reject) => {
+    const token = uni.getStorageSync('token')
+    const baseURL = config.baseURL
+    uni.request({
+      url: `${baseURL}/order/export/daily-summary`,
+      method: 'POST',
+      header: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Content-Type': 'application/json'
+      },
+      data: params,
+      responseType: 'arraybuffer',
+      success: (res) => {
+        if (res.statusCode === 200) {
+          resolve(res.data)
+        } else {
+          // 尝试解析错误信息（可能为 JSON）
+          try {
+            const text = String.fromCharCode.apply(null, new Uint8Array(res.data))
+            const err = JSON.parse(text)
+            reject(err.message || '导出失败')
+          } catch (e) {
+            reject(`导出失败 (HTTP ${res.statusCode})`)
+          }
+        }
+      },
+      fail: (err) => {
+        reject(err.errMsg || '网络请求失败')
+      }
+    })
+  })
+}
 
