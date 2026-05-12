@@ -105,6 +105,12 @@ import { createJsapiOrder, notifyWeChatPay, wechatUnifiedOrder } from '../../api
 import { upgradeUser, getUserInfo as getUserInfoApi, refreshUserInfo } from '@/api/user.js'
 import { getLevelText } from '@/utils/level.js'
 import { useCoupon } from '@/api/coupon.js'
+import {
+  pickWechatPayParamsFromUnifiedResponse,
+  buildWxMiniProgramPaymentArgs,
+  requestWxMiniProgramPayment,
+  parseWechatPaymentFail
+} from '@/utils/wechatPay.js'
 
 const paymentData = ref({
   orderNo: '',
@@ -338,47 +344,39 @@ const handlePayment = async () => {
           return
         }
 
-        // 3. 调起微信支付（后端可能将支付参数放在 data.pay_params 或 pay_params）
-        const payParams = (res && (res.data?.pay_params || res.pay_params)) || res.data || res
-
-        // 确保支付参数格式正确
-        if (!payParams.timeStamp || !payParams.nonceStr || !payParams.package || !payParams.paySign) {
-          console.error('[微信支付] 支付参数不完整:', payParams)
-          uni.showToast({ 
-            title: '支付参数错误，请重试', 
-            icon: 'none' 
+        // 3. 调起微信支付（仅官方五参数；勿传 total_fee）
+        const payParamsRaw = pickWechatPayParamsFromUnifiedResponse(res)
+        const payArgs = buildWxMiniProgramPaymentArgs(payParamsRaw)
+        if (!payArgs || !payArgs.timeStamp || !payArgs.nonceStr || !payArgs.package || !payArgs.paySign) {
+          console.error('[微信支付] 支付参数不完整:', payArgs, 'raw:', payParamsRaw)
+          uni.showToast({
+            title: '支付参数错误，请重试',
+            icon: 'none'
           })
           return
         }
 
-        uni.requestPayment({
-          provider: 'wxpay',
-          timeStamp: String(payParams.timeStamp),
-          nonceStr: payParams.nonceStr,
-          package: payParams.package || payParams.packageValue,
-          signType: payParams.signType || 'MD5',
-          paySign: payParams.paySign,
-          success: async (payRes) => {
-            // 微信支付成功
-            // 注意：订单状态更新由微信支付异步通知 /wechat-pay/notify 处理，不再需要调用 /order/pay
+        requestWxMiniProgramPayment(payArgs)
+          .then(async () => {
             console.log('[微信支付] 支付成功，订单号:', paymentData.value.orderNo)
-            
-            // 关闭 loading
             uni.hideLoading()
-            
-            // 直接处理支付成功逻辑
             handlePaymentSuccess()
-          },
-          fail: (err) => {
+          })
+          .catch((err) => {
             uni.hideLoading()
-            console.error('支付失败', err)
-            if (err.errMsg.includes('cancel')) {
+            const p = parseWechatPaymentFail(err)
+            if (p.userCancelled) {
+              console.log('[微信支付] 用户取消支付:', p.rawMsg)
               uni.showToast({ title: '已取消支付', icon: 'none' })
             } else {
-              uni.showToast({ title: '支付失败：' + err.errMsg, icon: 'none' })
+              console.error('[微信支付] 支付失败', err)
+              if (p.legacyTotalFeeMsg) {
+                uni.showModal({ title: '支付参数异常', content: p.userHint, showCancel: false })
+              } else {
+                uni.showToast({ title: '支付失败：' + (p.userHint || p.rawMsg), icon: 'none' })
+              }
             }
-          }
-        })
+          })
       } else {
         const errorMsg = res.message || res.msg || res.result?.message || '下单失败'
         console.error('[微信支付] 统一下单失败:', res)

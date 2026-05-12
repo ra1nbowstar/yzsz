@@ -253,6 +253,7 @@ import { calculateCharityFromTotalMinusPoints } from '../../config/charity.js'
 import { mapCouponWithTemplate, getCouponStatusText } from '../../utils/coupon.js'
 import { ensureMerchantOrder } from '../../utils/merchant.js'
 import { addLocalMessage } from '@/api/message.js'
+import { getStoredNumericUserId } from '@/utils/userInfo.js'
 
 const formatAmount = (val) => {
   return Number(val || 0).toFixed(4)
@@ -435,12 +436,13 @@ const discountAmount = computed(() => {
     // 运费券直接作用于运费，不依赖商品金额
     baseAmount = 0
   } else if (coupon.useScope === 'vip_only') {
+    // 與 isValidForOrder 一致：會員品可能只帶 productType / is_vip，避免少算可抵金額
     baseAmount = orderItems.value
-      .filter(item => item.isVip)
+      .filter(item => item.isVip || item.productType === 'vip')
       .reduce((sum, item) => sum + item.price * item.quantity, 0)
   } else if (coupon.useScope === 'normal_only') {
     baseAmount = orderItems.value
-      .filter(item => !item.isVip)
+      .filter(item => !(item.isVip || item.productType === 'vip'))
       .reduce((sum, item) => sum + item.price * item.quantity, 0)
   } else {
     // all - 全场通用
@@ -701,13 +703,19 @@ const submitFreeOrder = async () => {
   uni.showLoading({ title: '领取中...' })
   
   try {
+    try {
+      const { refreshUserInfo } = await import('@/api/user.js')
+      await refreshUserInfo()
+    } catch (e) {
+      console.warn('[订单确认] 同步用户信息失败:', e)
+    }
     const userInfo = uni.getStorageSync('userInfo') || {}
-    const userId = userInfo.id || userInfo.user_id
-    
-    if (!userId) {
+    const userId = getStoredNumericUserId(userInfo)
+
+    if (!Number.isFinite(userId) || userId <= 0) {
       throw new Error('用户未登录')
     }
-    
+
     const products = orderItems.value.map(item => ({
       product_id: item.productId || item.id,
       quantity: item.quantity,
@@ -767,13 +775,19 @@ const submitPayOrder = async () => {
   uni.showLoading({ title: '提交中...' })
   
   try {
+    try {
+      const { refreshUserInfo } = await import('@/api/user.js')
+      await refreshUserInfo()
+    } catch (e) {
+      console.warn('[订单确认] 同步用户信息失败:', e)
+    }
     const userInfo = uni.getStorageSync('userInfo') || {}
-    const userId = userInfo.id || userInfo.user_id
-    
-    if (!userId) {
+    const userId = getStoredNumericUserId(userInfo)
+
+    if (!Number.isFinite(userId) || userId <= 0) {
       throw new Error('用户未登录')
     }
-    
+
     const products = orderItems.value.map(item => ({
       product_id: item.productId || item.id,
       quantity: item.quantity,

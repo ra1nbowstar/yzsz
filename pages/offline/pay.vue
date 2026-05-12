@@ -210,6 +210,12 @@ import { getOfflineOrderDetail, getOrderDetail, offlinePayUnified } from '@/api/
 import { getMyCoupons } from '@/api/coupon.js'
 import { getPointsBalance } from '@/api/points.js'
 import { bindReferrer, getMobileByUserId } from '@/api/user.js'
+import {
+  pickWechatPayParamsFromUnifiedResponse,
+  buildWxMiniProgramPaymentArgs,
+  requestWxMiniProgramPayment,
+  parseWechatPaymentFail
+} from '@/utils/wechatPay.js'
 
 // 其余 API 按需动态 import
 
@@ -715,21 +721,20 @@ const handlePayment = async () => {
 
       const userInfo = uni.getStorageSync('userInfo') || {}
       const userId = userInfo.user_id ?? userInfo.id ?? userInfo.userId ?? userInfo.uid ?? null
-      const totalFeeFen = Math.round((Number(amount) || 0) * 100)
+      const yuan = Number(amount) || 0
+      let totalFeeFen = Math.round(yuan * 100)
+      // 有应付金额但四舍五入为 0 分时，至少 1 分，避免后端不下发 total_fee 导致「调用支付JSAPI缺少参数：total_fee」
+      if (yuan > 0 && totalFeeFen < 1) totalFeeFen = 1
 
       const res = await offlinePayUnified(orderNumber, couponIds, openid, userId, totalFeeFen, pts)
 
 
-      const payParams =
-        (res && (res.data?.pay_params || res.pay_params)) ||
-        (res && (res.data?.wechat_pay_params || res.wechat_pay_params)) ||
-        res?.data ||
-        res
+      const payParamsRaw = pickWechatPayParamsFromUnifiedResponse(res)
 
       console.log('[线下支付] 统一下单响应:', JSON.stringify(res, null, 2))
-      console.log('[线下支付] 解析出的 payParams:', JSON.stringify(payParams, null, 2))
+      console.log('[线下支付] 解析出的 payParams:', JSON.stringify(payParamsRaw, null, 2))
 
-      if (payParams.paySign === 'ZERO_ORDER_SIGN') {
+      if (payParamsRaw && payParamsRaw.paySign === 'ZERO_ORDER_SIGN') {
         console.log('[线下支付] 零元订单，直接成功')
         paymentSuccess.value = true
         showPaymentResult.value = true
@@ -738,23 +743,15 @@ const handlePayment = async () => {
         await handleReferralCode()
         console.log('[线下支付] 支付成功回调结束（零元订单）')
       } else {
-        if (!payParams.timeStamp || !payParams.nonceStr || !payParams.package || !payParams.paySign) {
+        const payArgs = buildWxMiniProgramPaymentArgs(payParamsRaw)
+        if (!payArgs || !payArgs.timeStamp || !payArgs.nonceStr || !payArgs.package || !payArgs.paySign) {
+          console.error('[线下支付] 支付参数不完整(规范化后):', payArgs, 'raw:', payParamsRaw)
           throw new Error('支付参数错误，请重试')
         }
 
-        const wxPayOnly = {
-          provider: 'wxpay',
-          timeStamp: String(payParams.timeStamp),
-          nonceStr: payParams.nonceStr,
-          package: payParams.package || payParams.packageValue,
-          signType: payParams.signType || 'MD5',
-          paySign: payParams.paySign
-        }
-
         await new Promise((resolve, reject) => {
-          uni.requestPayment({
-            ...wxPayOnly,
-            success: async (payRes) => {
+          requestWxMiniProgramPayment(payArgs)
+            .then(async (payRes) => {
               console.log('[线下支付] 微信支付成功:', payRes)
               try {
                 console.log('[线下支付] 开始支付成功回调：绑定与推荐处理')
@@ -768,33 +765,36 @@ const handlePayment = async () => {
               paymentResultMsg.value = ''
               showPaymentResult.value = true
               resolve(payRes)
-            },
-            fail: (err) => {
-              console.error('[线下支付] 微信支付失败:', err)
-              const rawMsg = String(err?.errMsg || err?.message || err?.msg || '')
-              const isCancel = rawMsg.includes('cancel')
-              const isParamError = /total_fee|缺少参数|参数错误/i.test(rawMsg)
-              let friendlyMsg
-              if (isCancel && !isParamError) {
-                friendlyMsg = '用户已取消支付'
-              } else if (isParamError) {
-                friendlyMsg = '支付参数异常，请重试或联系商户'
+            })
+            .catch((err) => {
+              const p = parseWechatPaymentFail(err)
+              if (p.userCancelled) {
+                console.log('[线下支付] 用户取消支付:', p.rawMsg)
               } else {
-                friendlyMsg = rawMsg.replace(/requestPayment:fail\s*/i, '').trim() || '支付失败，请稍后重试'
+                console.error('[线下支付] 微信支付失败:', err)
               }
-              reject(new Error(friendlyMsg))
-            }
-          })
+              const friendlyMsg = p.userCancelled ? '用户已取消支付' : p.userHint
+              const e = new Error(friendlyMsg)
+              e._userCancelledPayment = p.userCancelled
+              e._legacyTotalFeeMsg = p.legacyTotalFeeMsg
+              reject(e)
+            })
         })
       }
     } else if (selectedMethod.value === 2) {
       uni.showToast({ title: '支付宝支付暂未开通', icon: 'none' })
     }
   } catch (error) {
-    console.error('[线下支付] 支付失败:', error)
-    paymentSuccess.value = false
-    paymentResultMsg.value = error.message || '支付失败，请重试'
-    showPaymentResult.value = true
+    const msg = error?.message || ''
+    if (error?._userCancelledPayment || parseWechatPaymentFail(error).userCancelled) {
+      console.log('[线下支付] 已取消支付，不展示失败页:', msg)
+      uni.showToast({ title: '已取消支付', icon: 'none' })
+    } else {
+      console.error('[线下支付] 支付失败:', error)
+      paymentSuccess.value = false
+      paymentResultMsg.value = msg || '支付失败，请重试'
+      showPaymentResult.value = true
+    }
   } finally {
     paying.value = false
     uni.hideLoading()

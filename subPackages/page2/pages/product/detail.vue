@@ -76,7 +76,7 @@
 				</view>
 				<view class="benefit-item">
 					<text class="benefit-icon iconfont icon-xiaoshoutongji"></text>
-					<text class="benefit-text">参与周补贴分配</text>
+					<text class="benefit-text">参与日补贴分配</text>
 				</view>
 			</view>
 			

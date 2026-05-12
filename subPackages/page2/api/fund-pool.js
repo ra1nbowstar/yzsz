@@ -35,3 +35,17 @@ export const updateFundPoolAllocations = (data) => {
   return request.post('/api/fund-pools/allocations', requestBody)
 }
 
+/** GET /api/fund-pools/direct-referral-reward-rate */
+export const getDirectReferralRewardRate = () => {
+  return request.get('/api/fund-pools/direct-referral-reward-rate')
+}
+
+/** POST /api/fund-pools/direct-referral-reward-rate Body: { rate }，(0, 1] */
+export const setDirectReferralRewardRate = (rate) => {
+  const r = Number(rate)
+  if (!Number.isFinite(r) || r <= 0 || r > 1) {
+    return Promise.reject(new Error('直推奖励比例须在 (0, 1] 之间'))
+  }
+  return request.post('/api/fund-pools/direct-referral-reward-rate', { rate: r })
+}
+

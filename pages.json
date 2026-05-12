@@ -579,6 +579,12 @@
 					}
 				},
 				{
+					"path": "pages/merchant/weight-adjust",
+					"style": {
+						"navigationBarTitleText": "权重调整"
+					}
+				},
+				{
 				          "path": "pages/fund-pool/index",
 				          "style": {
 				            "navigationBarTitleText": "我的资金"

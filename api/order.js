@@ -5,6 +5,7 @@
 import request from '@/utils/request.js'
 import config from '@/utils/config.js'
 import { getDeliveryListSorted } from '@/data/delivery-list.js'
+import { getStoredNumericUserId } from '@/utils/userInfo.js'
 
 /**
  * 创建订单（包含积分信息）
@@ -37,9 +38,9 @@ export const getOrderList = (params = {}) => {
   let finalUserId = null
 
   if (!userId) {
-    // 如果没有提供userId，尝试从本地存储获取
-    const userInfo = uni.getStorageSync('userInfo') || {}
-    finalUserId = userInfo.id || userInfo.user_id
+    // 如果没有提供userId，尝试从本地存储获取（须与 users.id 一致）
+    finalUserId = getStoredNumericUserId()
+    if (Number.isNaN(finalUserId)) finalUserId = null
   } else {
     finalUserId = userId
   }
@@ -154,7 +155,11 @@ export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_
   const body = {}
   if (openid && String(openid).trim()) body.openid = String(openid).trim()
   if (user_id != null && user_id !== '') body.user_id = user_id
-  if (total_fee != null && total_fee > 0) body.total_fee = total_fee
+  // 统一下单金额（分）：须始终传给后端；仅 >0 时省略会导致后端/收银台返回的 JSAPI 参数缺 total_fee
+  if (total_fee != null && total_fee !== '' && !Number.isNaN(Number(total_fee))) {
+    const fen = Math.max(0, Math.round(Number(total_fee)))
+    body.total_fee = fen
+  }
   // 传递积分参数（注意单位：需与后端确认）
   if (points_to_use != null && points_to_use > 0) {
     // 如果后端要求以分为单位，则乘以100；如果以元为单位，直接传递

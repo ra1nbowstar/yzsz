@@ -41,6 +41,36 @@ export const distributeCoupon = (params) => {
 }
 
 /**
+ * 批量发放优惠券（与平台模式「批量发放优惠券」页一致）
+ * POST /api/coupons/distribute-batch
+ * Body 仅四字段：user_ids、amount、coupon_type、applicable_product_type（与后端 Pydantic 一致）。
+ * 注意：该接口从各用户 true_total_points 等扣减发券，不从资金池扣款；资金池转正请用 fund-pools/transform-to-coupon。
+ * @param {Object} params
+ * @param {Number[]} params.user_ids 用户 ID 列表（同一用户重复多次即发放多张）
+ * @param {Number} params.amount 单张面额（元）
+ * @param {String} [params.coupon_type='user'] user | merchant
+ * @param {String} [params.applicable_product_type='all'] all | normal_only | member_only
+ */
+export const distributeBatchCoupons = (params) => {
+  if (!params || !Array.isArray(params.user_ids) || params.user_ids.length === 0) {
+    return Promise.reject(new Error('user_ids 不能为空'))
+  }
+  if (params.amount == null || Number(params.amount) <= 0) {
+    return Promise.reject(new Error('amount 必须大于 0'))
+  }
+  const body = {
+    user_ids: params.user_ids.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id)),
+    amount: Number(params.amount),
+    coupon_type: params.coupon_type || 'user',
+    applicable_product_type: params.applicable_product_type || 'all'
+  }
+  if (body.user_ids.length === 0) {
+    return Promise.reject(new Error('user_ids 无有效用户 ID'))
+  }
+  return request.post('/api/coupons/distribute-batch', body)
+}
+
+/**
  * 查询我的优惠券
  * @param {Object} params 查询参数
  * @param {Number} params.user_id 用户ID（必需）
@@ -72,6 +102,47 @@ export const getMyCoupons = (params) => {
   const url = `/my?${queryParams.join('&')}`
   
   return request.get(url)
+}
+
+/**
+ * 从 GET /my 响应解析「符合查询条件的优惠券总条数」（分页 total，可与本页 coupons 长度不同）。
+ * 兼容常见字段名；无合法数字时返回 null，便于调用方走列表统计回退。
+ * @param {object} res request 封装后的完整响应（可能含 data）
+ * @returns {number|null}
+ */
+export const pickMyCouponsTotal = (res) => {
+  if (!res || typeof res !== 'object') return null
+  const candidates = [res.data, res.result, res]
+  const keys = ['total', 'count', 'total_count', 'unused_total', 'available_count', 'available_total']
+  for (const block of candidates) {
+    if (!block || typeof block !== 'object') continue
+    for (const k of keys) {
+      if (block[k] == null || block[k] === '') continue
+      const n = Number(block[k])
+      if (Number.isFinite(n) && n >= 0) return Math.floor(n)
+    }
+  }
+  return null
+}
+
+/**
+ * 无 total 时回退：在列表上统计未使用且未过期（与旧版个人中心逻辑一致）
+ * @param {unknown} list
+ * @returns {number}
+ */
+export const countUnusedUnexpiredCoupons = (list) => {
+  const now = Date.now()
+  const arr = Array.isArray(list) ? list : []
+  return arr.filter((coupon) => {
+    if (!coupon) return false
+    if (String(coupon.status || '') !== 'unused') return false
+    const validTo = coupon.valid_to || coupon.validTo
+    if (validTo) {
+      const t = new Date(validTo).getTime()
+      if (Number.isNaN(t) || t < now) return false
+    }
+    return true
+  }).length
 }
 
 /**
