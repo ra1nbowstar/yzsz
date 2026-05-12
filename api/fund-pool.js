@@ -23,8 +23,32 @@ export const getFundPoolAllocations = () => {
 }
 
 /**
- * 资金池转正：转化为优惠券
- * 接口要求参数为 query：pool_type, user_id, amount, coupon_type, applicable_product_type, remark
+ * 直推奖励比例（与 FinanceService.get_direct_referral_reward_rate 对应）
+ * GET /api/fund-pools/direct-referral-reward-rate
+ * @returns {Promise<{ rate?: number, data?: { rate?: number } }>}
+ */
+export const getDirectReferralRewardRate = () => {
+  return request.get('/api/fund-pools/direct-referral-reward-rate')
+}
+
+/**
+ * 设置直推奖励比例（与 FinanceService.set_direct_referral_reward_rate 对应）
+ * POST /api/fund-pools/direct-referral-reward-rate
+ * Body: { "rate": number }，合法范围 (0, 1]
+ * @param {number} rate
+ */
+export const setDirectReferralRewardRate = (rate) => {
+  const r = Number(rate)
+  if (!Number.isFinite(r) || r <= 0 || r > 1) {
+    return Promise.reject(new Error('直推奖励比例须在 (0, 1] 之间'))
+  }
+  return request.post('/api/fund-pools/direct-referral-reward-rate', { rate: r })
+}
+
+/**
+ * 资金池转正：转化为优惠券（从指定资金池扣款；与 /api/coupons/distribute-batch 不同，后者扣用户积分/雨点）
+ * POST /api/fund-pools/transform-to-coupon
+ * Query：pool_type, user_id, amount（整数元，后端按多张 1 元券发放）, coupon_type, applicable_product_type, remark
  */
 export const transformToCoupon = (params) => {
   const pairs = []

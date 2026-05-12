@@ -109,6 +109,10 @@
         <text class="func-icon iconfont icon-hongbao" style="color: #07c160;"></text>
         <text class="func-text">永久收款码</text>
       </view>
+      <view class="func-card" @tap="goToPage('/subPackages/page2/pages/merchant/weight-adjust')">
+        <text class="func-icon iconfont icon-shezhi" style="color: #673ab7;"></text>
+        <text class="func-text">权重调整</text>
+      </view>
 	  <view class="func-card" @tap="goToPage('/subPackages/page2/pages/fund-pool/index')">
 	    <text class="func-icon iconfont icon-tixian" style="color: #ff6b00;"></text>
 	    <text class="func-text">资金池使用</text>

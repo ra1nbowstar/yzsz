@@ -65,7 +65,7 @@
 </template>
 
 <script setup>
-import request from '@/utils/request.js'
+import { distributeBatchCoupons } from '@/api/coupon.js'
 import { ref } from 'vue'
 
 const userIdsText = ref('')
@@ -107,15 +107,15 @@ const submit = async () => {
 
   submitting.value = true
   try {
-    const res = await request.post('/api/coupons/distribute-batch', {
+    const res = await distributeBatchCoupons({
       user_ids: ids,
       amount: amountNum,
       coupon_type: 'user',
       applicable_product_type: selectedType.value
     })
 
-    // 解析后端返回的数据（假设格式为 { success_count, failed_users, coupon_ids }）
-    const { success_count = 0, failed_users = [], coupon_ids = [] } = res.data || {}
+    const payload = res && (res.data != null ? res.data : res)
+    const { success_count = 0, failed_users = [], coupon_ids = [] } = payload || {}
 
     let message = `成功发放 ${success_count} 张优惠券`
     if (failed_users.length > 0) {

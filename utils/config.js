@@ -15,7 +15,7 @@ export const WECHAT_MERCHANT_ID = '1105084579'
 // 微信进件结算规则ID：前端有则用此前端配置，没有则用后端 GET /wechat-applyment/config 或由后端在 submit 时填充
 export const WECHAT_SETTLE_RULE_ID = ''
 
-// 服务器地址配置（须含协议双斜杠 https://，勿写成 https:host 否则小程序会把图片当本地路径）服务器：https://yuzedigital.site 测试地址 http://192.168.3.13:8001
+// 服务器地址配置（须含协议双斜杠 https://，勿写成 https:host 否则小程序会把图片当本地路径）服务器：https://yuzedigital.site 测试地址 http://192.168.3.13:8001 本机测试地址
 const SERVER_CONFIGS = {
   production: 'https://yuzedigital.site',
   custom: '' // 自定义地址

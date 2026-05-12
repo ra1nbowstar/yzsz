@@ -796,18 +796,39 @@ export const refreshUserInfo = async () => {
       userData = res && (res.data || res)
     }
     
-    // 保留本地的一些关键字段（如 user_id, id 等）
-    const preservedUserId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
+    // 用户主键：必须优先采用接口返回的 uid/user_id（与 users 表一致）。
+    // 旧逻辑曾「优先保留本地 ID」，若本地为过期/错误值会覆盖服务端正确 uid，导致下单外键 1452。
+    const pickPositiveInt = (...vals) => {
+      for (const v of vals) {
+        if (v == null || v === '') continue
+        const n = parseInt(String(v).trim(), 10)
+        if (Number.isFinite(n) && n > 0) return n
+      }
+      return null
+    }
+    const serverUserId = pickPositiveInt(
+      userData && userData.uid,
+      userData && userData.user_id,
+      userData && userData.id,
+      userData && userData.userId
+    )
+    const localUserId = pickPositiveInt(
+      storedUserInfo.user_id,
+      storedUserInfo.id,
+      storedUserInfo.userId,
+      storedUserInfo.uid
+    )
+    const canonicalUserId = serverUserId ?? localUserId
+
     const preservedMobile = storedUserInfo.mobile || storedUserInfo.phone
-    
-    // 合并数据：优先使用接口返回的数据，但保留本地的关键字段
+
+    // 合并数据：业务字段以接口为准；id 类字段以上述 canonical 为准
     const updatedUserInfo = {
       ...userData,
-      // 确保关键字段不被覆盖
-      user_id: preservedUserId || userData.uid || userData.user_id || userData.id,
-      id: preservedUserId || userData.uid || userData.user_id || userData.id,
-      userId: preservedUserId || userData.uid || userData.user_id || userData.id,
-      uid: preservedUserId || userData.uid || userData.user_id || userData.id,
+      user_id: canonicalUserId ?? userData.user_id ?? userData.id ?? userData.uid,
+      id: canonicalUserId ?? userData.id ?? userData.user_id ?? userData.uid,
+      userId: canonicalUserId ?? userData.userId ?? userData.user_id ?? userData.id,
+      uid: canonicalUserId ?? userData.uid ?? userData.user_id ?? userData.id,
       mobile: preservedMobile || userData.mobile || userData.phone,
       phone: preservedMobile || userData.mobile || userData.phone,
       // 确保头像字段被正确保存（优先使用接口返回的，如果没有则保留本地的）

@@ -37,13 +37,14 @@
         />
       </view>
       <view class="form-row">
-        <text class="form-label">转化金额</text>
+        <text class="form-label">转化金额（元）</text>
         <input
           class="form-input"
           type="digit"
           v-model="transformFormAmount"
-          placeholder="必填，转正金额"
+          placeholder="必填，整数元"
         />
+        <text class="form-tip">按整数元计：从所选资金池扣款并发放等额张数、每张 1 元的券（接口：资金池转正）。平台「批量发放优惠券」为另一接口，从用户雨点/积分扣减，不能代替资金池扣款。</text>
       </view>
       <view class="form-row">
         <text class="form-label">优惠券类型</text>
@@ -168,13 +169,14 @@ const selectedPoolBalanceText = computed(() => {
   return `${name || '当前'}池可用资金：¥${formatAmount(isNaN(n) ? 0 : n)}`
 })
 
-// 表单提交：资金池、用户ID、金额必填
+// 表单提交：资金池、用户ID、金额必填（整数元 ≥1 才发券）
 const canSubmitTransform = computed(() => {
   const opts = poolOptionsForPicker.value
   const pool = opts[transformPoolIndex.value]
   const uid = String(transformUserId.value || '').trim()
-  const amount = Number(transformFormAmount.value)
-  return pool && uid && amount > 0
+  const raw = Number(transformFormAmount.value)
+  const n = Math.floor(raw)
+  return Boolean(pool && uid && Number.isFinite(raw) && raw > 0 && n >= 1)
 })
 
 const onTransformPoolChange = (e) => {
@@ -187,7 +189,7 @@ const onApplicableTypeChange = (e) => {
   applicableTypeIndex.value = Number(e.detail.value) || 0
 }
 
-// 提交资金池转优惠券（调用接口）
+// 提交资金池转优惠券：POST /api/fund-pools/transform-to-coupon（从资金池扣款；整数元 = 张数，后端发多张 1 元券）
 const submitTransform = async () => {
   if (!canSubmitTransform.value || submittingTransform.value) return
   const opts = poolOptionsForPicker.value
@@ -197,29 +199,43 @@ const submitTransform = async () => {
     uni.showToast({ title: '请选择资金池', icon: 'none' })
     return
   }
+  const uid = parseInt(String(transformUserId.value).trim(), 10)
+  if (isNaN(uid) || uid <= 0) {
+    uni.showToast({ title: '请输入有效的用户ID', icon: 'none' })
+    return
+  }
+  const rawYuan = Number(transformFormAmount.value)
+  if (!Number.isFinite(rawYuan) || rawYuan <= 0) {
+    uni.showToast({ title: '请输入有效的金额', icon: 'none' })
+    return
+  }
+  const n = Math.floor(rawYuan)
+  if (n < 1) {
+    uni.showToast({ title: '金额需至少 1 元（发 1 张）', icon: 'none' })
+    return
+  }
+  if (rawYuan !== n) {
+    uni.showToast({ title: `小数不计入张数，将按 ${n} 元转正`, icon: 'none' })
+  }
+
   submittingTransform.value = true
   const payload = {
     pool_type: poolType,
-    user_id: Number(transformUserId.value),
-    amount: Number(transformFormAmount.value),
+    user_id: uid,
+    amount: n,
     coupon_type: couponTypeOptions.value[couponTypeIndex.value].value,
     applicable_product_type: applicableTypeOptions.value[applicableTypeIndex.value].value,
     remark: transformRemark.value ? String(transformRemark.value).trim() : undefined
   }
-  console.log('[我的资金] transformToCoupon 请求参数:', JSON.stringify(payload, null, 2))
+  console.log('[我的资金] transform-to-coupon:', JSON.stringify(payload, null, 2))
   try {
-    const res = await transformToCoupon(payload)
-    console.log('[我的资金] transformToCoupon 接口完整响应:', JSON.stringify(res, null, 2))
-    console.log('[我的资金] transformToCoupon res.data:', res?.data)
-    console.log('[我的资金] transformToCoupon res.success:', res?.success)
-    console.log('[我的资金] transformToCoupon res.message:', res?.message)
+    await transformToCoupon(payload)
     uni.showToast({ title: '转正成功', icon: 'success' })
     transformFormAmount.value = ''
     transformRemark.value = ''
     loadFundList()
   } catch (err) {
-    console.error('[我的资金] transformToCoupon 请求失败:', err)
-    console.error('[我的资金] 错误详情:', err?.message, err?.data, err?.detail, err)
+    console.error('[我的资金] transform-to-coupon 失败:', err)
     uni.showToast({ title: err.message || err.msg || '转正失败', icon: 'none' })
   } finally {
     submittingTransform.value = false
@@ -338,12 +354,12 @@ const closeModal = () => {
   transformAmount.value = ''
 }
 
-// 确认转化
+// 确认转化（资金池转正接口；整数元，后端多张 1 元券）
 const confirmTransform = async () => {
   if (!canTransform.value || transforming.value) return
-  
+
   transforming.value = selectedFund.value.type
-  
+
   try {
     const userInfo = uni.getStorageSync('userInfo') || {}
     const userId = userInfo.id ?? userInfo.user_id
@@ -352,28 +368,33 @@ const confirmTransform = async () => {
       transforming.value = ''
       return
     }
+    const rawYuan = Number(transformAmount.value)
+    const n = Math.floor(rawYuan)
+    if (!Number.isFinite(rawYuan) || n < 1) {
+      uni.showToast({ title: '请输入至少 1 元的整数金额', icon: 'none' })
+      transforming.value = ''
+      return
+    }
     await transformToCoupon({
       pool_type: selectedFund.value.type || selectedFund.value.pool_type,
-      user_id: Number(userId),
-      amount: Number(transformAmount.value),
+      user_id: parseInt(String(userId), 10),
+      amount: n,
       coupon_type: 'user',
       applicable_product_type: 'all'
     })
-    
-    uni.showToast({ 
-      title: `成功转化¥${formatAmount(transformAmount.value)}`, 
+
+    uni.showToast({
+      title: `成功转化¥${formatAmount(n)}`,
       icon: 'success',
       duration: 2000
     })
-    
+
     closeModal()
-    // 刷新列表
     loadFundList()
-    
   } catch (err) {
-    uni.showToast({ 
-      title: err.message || '转化失败', 
-      icon: 'none' 
+    uni.showToast({
+      title: err.message || '转化失败',
+      icon: 'none'
     })
   } finally {
     transforming.value = ''
@@ -458,6 +479,14 @@ onLoad(() => {
   background: #f8f9fa;
   border-radius: 12rpx;
   border: 2rpx solid #e8e8e8;
+}
+
+.form-tip {
+  display: block;
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 10rpx;
+  line-height: 1.45;
 }
 
 .picker-value {

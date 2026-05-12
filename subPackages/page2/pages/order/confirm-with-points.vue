@@ -133,17 +133,17 @@
 			</view>
 
       <view class="auto-coupon-info">
-        <text class="info-text">已选择 {{ selectedCouponCount }} 张1元券</text>
+        <text class="info-text">已选择 {{ effectiveCouponUseCount }} 张1元券</text>
         <text class="info-desc">抵扣 ¥{{ couponDiscount }}</text>
         <text class="info-tip">（优先使用即将过期的券）</text>
       </view>
     </view>
 	
 	<view class="coupon-slider-row" v-if="availableCount > 0">
-	  <text class="slider-label">使用张数：{{ selectedCouponCount }} / {{ availableCount }}</text>
+	  <text class="slider-label">使用张数：{{ effectiveCouponUseCount }} / {{ availableCount }}</text>
 	  <slider 
 	    class="coupon-slider"
-	    :value="selectedCouponCount"
+	    :value="effectiveCouponUseCount"
 	    :min="0"
 	    :max="availableCount"
 	    step="1"
@@ -221,6 +221,7 @@ import { addLocalMessage } from '@/api/message.js'
 import { getAddressList } from '@/api/user.js'
 import { setStorage, removeStorage } from '@/utils/storage.js'
 import { getPointsBalance } from '@/api/points.js'
+import { getStoredNumericUserId } from '@/utils/userInfo.js'
 
 const formatAmount = (val) => {
   return Number(val || 0).toFixed(4)
@@ -447,13 +448,23 @@ const availableCount = computed(() => {
 })
 
 // ========== 优惠券新逻辑 ==========
-// 自动选中的优惠券ID列表（取前 selectedCouponCount 张）
-const selectedCouponIds = computed(() => {
-  return availableOneYuanCoupons.value.slice(0, selectedCouponCount.value).map(c => c.id)
+// 实际参与组单的张数：必须与 coupon_ids 长度一致（每张 1 元）。
+// 若 selectedCouponCount 大于「当前加载到的 1 元券张数」或大于 availableCount，
+// 仅用 slice 会导致请求里 id 变少、但 couponDiscount 仍按旧张数算，与后端反馈的现象一致。
+const effectiveCouponUseCount = computed(() => {
+  const cap = availableCount.value
+  const raw = Number(selectedCouponCount.value) || 0
+  if (!Number.isFinite(cap) || cap <= 0) return 0
+  return Math.max(0, Math.min(raw, cap))
 })
 
-// 优惠券总抵扣金额（每张1元）
-const couponDiscount = computed(() => selectedCouponCount.value)
+// 自动选中的优惠券 ID（取前 effectiveCouponUseCount 张）
+const selectedCouponIds = computed(() => {
+  return availableOneYuanCoupons.value.slice(0, effectiveCouponUseCount.value).map((c) => c.id)
+})
+
+// 优惠券总抵扣金额（每张 1 元，与 selectedCouponIds 长度一致）
+const couponDiscount = computed(() => effectiveCouponUseCount.value)
 // 实际支付金额
 const actualAmount = computed(() => {
   return Math.max(0, originalAmount.value - pointsDiscount.value - couponDiscount.value)
@@ -475,10 +486,10 @@ const loadAvailableCoupons = async () => {
   
   try {
     const userInfo = uni.getStorageSync('userInfo') || {}
-    const userId = userInfo.id || userInfo.user_id
-    
-    if (!userId) {
-      console.error('用户未登录')
+    const userId = getStoredNumericUserId(userInfo)
+
+    if (!Number.isFinite(userId) || userId <= 0) {
+      console.error('用户未登录或用户ID无效')
       availableCoupons.value = []
       return
     }
@@ -552,6 +563,12 @@ const loadAvailableCoupons = async () => {
     availableCoupons.value = []
   } finally {
     loadingCoupons.value = false
+    nextTick(() => {
+      const cap = availableCount.value
+      if (Number.isFinite(cap) && selectedCouponCount.value > cap) {
+        selectedCouponCount.value = cap
+      }
+    })
   }
 }
 
@@ -612,6 +629,14 @@ const isCouponValidForOrder = (coupon) => {
 const onCouponCountChange = (e) => {
   selectedCouponCount.value = e.detail.value
 }
+
+// 重新拉券（如 onShow）后可用张数变少时，把滑块记忆值压回上限，避免「显示/本地状态」长期大于真实可组单张数
+watch(availableCount, (cap) => {
+  if (!Number.isFinite(cap) || cap < 0) return
+  if (selectedCouponCount.value > cap) {
+    selectedCouponCount.value = cap
+  }
+})
 const handleSubmit = () => {
   console.log('[点击] isFreeOrder:', isFreeOrder.value, 'selectedCouponCount:', selectedCouponCount.value, 'actualAmount:', actualAmount.value)
   if (isFreeOrder.value) {
@@ -716,6 +741,9 @@ watch([selectedAddress, productTotal], () => {
 const getOrderErrorTitle = (error) => {
   const msg = (error && (error.message || error.msg || error.detail)) || ''
   const s = typeof msg === 'string' ? msg : String(msg)
+  if (/1452|foreign key|FOREIGN KEY|Cannot add or update a child row/i.test(s)) {
+    return '当前登录信息与服务器不一致，请退出后重新登录再下单'
+  }
   if (/InsufficientBalance/i.test(s)) return '余额不足或优惠券不可用，请检查后重试'
   if (/insufficient|不足/i.test(s)) return '余额或额度不足，请检查后重试'
   if (/Exception|Error|_init_|got an/i.test(s) && s.length > 30) return '服务暂时异常，请稍后重试'
@@ -742,9 +770,16 @@ const submitFreeOrder = async () => {
   uni.showLoading({ title: '提交中...' })
 
   try {
+    try {
+      const { refreshUserInfo } = await import('@/api/user.js')
+      await refreshUserInfo()
+    } catch (e) {
+      console.warn('[零元订单] 同步用户信息失败，将使用本地缓存:', e)
+    }
+
     const userInfo = uni.getStorageSync('userInfo') || {}
-    const userId = userInfo.id || userInfo.user_id
-    if (!userId) {
+    const finalUserId = getStoredNumericUserId(userInfo)
+    if (!Number.isFinite(finalUserId) || finalUserId <= 0) {
       uni.hideLoading()
       uni.showToast({ title: '请先登录', icon: 'none' })
       return
@@ -757,8 +792,12 @@ const submitFreeOrder = async () => {
       return
     }
 
-    const finalUserId = parseInt(userId)
-    const finalAddressId = parseInt(addressId)
+    const finalAddressId = parseInt(String(addressId), 10)
+    if (!Number.isFinite(finalAddressId) || finalAddressId <= 0) {
+      uni.hideLoading()
+      uni.showToast({ title: '地址ID无效', icon: 'none' })
+      return
+    }
 
     const customAddress = selectedAddress.value ? {
       name: selectedAddress.value.name || '',
@@ -1030,8 +1069,8 @@ const submitOrder = async () => {
   }
 
   const userInfo = uni.getStorageSync('userInfo') || {}
-  const userId = userInfo.id || userInfo.user_id
-  if (!userId) {
+  const finalUserIdPrecheck = getStoredNumericUserId(userInfo)
+  if (!Number.isFinite(finalUserIdPrecheck) || finalUserIdPrecheck <= 0) {
     uni.showToast({ title: '请先登录', icon: 'none' })
     return
   }
@@ -1048,10 +1087,18 @@ const submitOrder = async () => {
 
   uni.showLoading({ title: '提交中...' })
 
-  const finalUserId = parseInt(userId)
-  const finalAddressId = parseInt(addressId)
+  try {
+    const { refreshUserInfo } = await import('@/api/user.js')
+    await refreshUserInfo()
+  } catch (e) {
+    console.warn('[订单确认] 下单前同步用户信息失败，将使用本地缓存:', e)
+  }
 
-  if (!finalUserId || finalUserId === 0) {
+  const userInfoSynced = uni.getStorageSync('userInfo') || {}
+  const finalUserId = getStoredNumericUserId(userInfoSynced)
+  const finalAddressId = parseInt(String(addressId), 10)
+
+  if (!Number.isFinite(finalUserId) || finalUserId <= 0) {
     uni.hideLoading()
     uni.showToast({ title: '用户ID无效，请重新登录', icon: 'none' })
     return

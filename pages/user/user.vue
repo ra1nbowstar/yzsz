@@ -198,7 +198,7 @@ import { bindReferrerIfNeeded } from '@/utils/referral.js'
 import { getPointsLog, getPointsBalance } from '@/api/points.js'
 import { loadUserCoupons } from '@/utils/coupon.js'
 import { onUserLogout } from '@/utils/storage.js'
-import { getMyCoupons } from '@/api/coupon.js'
+import { getMyCoupons, pickMyCouponsTotal, countUnusedUnexpiredCoupons } from '@/api/coupon.js'
 import { getOrderList } from '@/api/order.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
 
@@ -334,7 +334,7 @@ const loadPointsLogCount = async () => {
 }
 
 /**
- * 加载优惠券数量（加载用户可用的未使用且未过期优惠券）
+ * 加载优惠券数量：优先使用 GET /my 返回的 total（status=unused 时后端统计可用张数），无 total 时再本地过滤回退
  */
 const loadCouponCount = async () => {
 	try {
@@ -342,20 +342,22 @@ const loadCouponCount = async () => {
 		const userId = storedUserInfo.id || storedUserInfo.user_id
 		if (!userId) { couponCount.value = 0; return }
 
-		const res = await getMyCoupons({ user_id: userId, status: 'all', page: 1, page_size: 99999 })
-		const list = res.data?.coupons || res.coupons || res.data || res || []
-		const now = Date.now()
-		const validCoupons = (Array.isArray(list) ? list : []).filter(coupon => {
-			if (!coupon) return false
-			if ((coupon.status || '').toString() !== 'unused') return false
-			const validTo = coupon.valid_to || coupon.validTo
-			if (validTo) {
-				const t = new Date(validTo).getTime()
-				if (isNaN(t) || t < now) return false
-			}
-			return true
-		})
-		couponCount.value = validCoupons.length
+		const res = await getMyCoupons({ user_id: userId, status: 'unused', page: 1, page_size: 1 })
+		let total = pickMyCouponsTotal(res)
+		if (total !== null) {
+			couponCount.value = total
+			return
+		}
+
+		const resFull = await getMyCoupons({ user_id: userId, status: 'unused', page: 1, page_size: 99999 })
+		total = pickMyCouponsTotal(resFull)
+		if (total !== null) {
+			couponCount.value = total
+			return
+		}
+
+		const list = resFull.data?.coupons || resFull.coupons || resFull.data || resFull || []
+		couponCount.value = countUnusedUnexpiredCoupons(list)
 	} catch (err) {
 		console.error('加载优惠券数量失败', err)
 		couponCount.value = 0
