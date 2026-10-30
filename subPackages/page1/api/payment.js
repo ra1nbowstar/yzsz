@@ -66,7 +66,7 @@ export const createPayment = async ({ amount, product_name, store_name, note, ex
 }
 
 export const generateQRCode = async (code_token) => {
-  console.log('api代码为调用，生成收款码：', code_token)
+  console.log('api代码为调用，生成收款码')
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve({ qrcode: `merchant://pay?token=${code_token}` })

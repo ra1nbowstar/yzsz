@@ -622,7 +622,7 @@ const handleWeChatLogin = async () => {
 						
 						if (openidToSave) {
 							uni.setStorageSync('openid', openidToSave)
-							console.log('[微信登录] 已保存 OpenID:', openidToSave.substring(0, 10) + '...')
+							console.log('[微信登录] 已保存 OpenID')
 						} else {
 							console.warn('[微信登录] 未找到 OpenID，后端返回数据:', {
 								hasOpenid: !!res.openid,

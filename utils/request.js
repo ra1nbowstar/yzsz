@@ -197,6 +197,18 @@ class Request {
           } else if (res.statusCode === 404) {
             // 404错误不显示提示，直接reject（由调用方决定是否静默处理）
             reject({ code: 404, statusCode: 404, message: '接口不存在' })
+          } else if (res.statusCode === 403) {
+            // 无权限（角色/归属失败）：提示无权限，不自动重试
+            const rawMsg = responseData.detail || responseData.message || responseData.msg || '无权限'
+            const errorMsg = typeof rawMsg === 'string' ? rawMsg : (Array.isArray(rawMsg) && rawMsg.length ? String(rawMsg[0]) : '无权限')
+            this.handleError(errorMsg)
+            reject({ code: 403, statusCode: 403, message: errorMsg, detail: responseData.detail, ...responseData })
+          } else if (res.statusCode === 409) {
+            // 状态/幂等/库存冲突：提示冲突，由调用方刷新后重试，不盲重试写操作
+            const rawMsg = responseData.detail || responseData.message || responseData.msg || '操作冲突，请刷新后重试'
+            const errorMsg = typeof rawMsg === 'string' ? rawMsg : (Array.isArray(rawMsg) && rawMsg.length ? String(rawMsg[0]) : '操作冲突，请刷新后重试')
+            this.handleError(errorMsg)
+            reject({ code: 409, statusCode: 409, message: errorMsg, detail: responseData.detail, ...responseData })
           } else {
             // 处理其他状态码错误（包括 422 验证错误）
             // 提取错误消息，确保是字符串

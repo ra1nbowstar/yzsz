@@ -41,6 +41,16 @@
 				<text class="asset-label">积分余额</text>
 			</view>
 			<view class="asset-divider"></view>
+			<view class="asset-item">
+				<text class="asset-value">{{ kadaEggCount }}</text>
+				<text class="asset-label">咯哒蛋</text>
+			</view>
+			<view class="asset-divider"></view>
+			<view class="asset-item">
+				<text class="asset-value">{{ kadaCouponCount }}</text>
+				<text class="asset-label">咯哒券</text>
+			</view>
+			<view class="asset-divider"></view>
 			<view class="asset-item" @tap="goToPage('/subPackages/page2/pages/user/coupons')">
 				<text class="asset-value">{{ couponCount }}</text>
 				<text class="asset-label">优惠券</text>
@@ -85,20 +95,20 @@
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
-			<view class="menu-item" @tap="goToPage('/subPackages/page2/pages/user/coupons')">
-				<view class="menu-left">
-					<text class="menu-icon iconfont icon-youhuijuan"></text>
-					<text class="menu-text">我的优惠券</text>
-				</view>
-				<view class="menu-right">
-					<text class="menu-arrow">›</text>
-				</view>
-			</view>
 			<!-- 暂时隐藏周补贴,保留代码 -->
 			<view v-if="false" class="menu-item" @tap="goToPage('/subPackages/page2/pages/subsidy/subsidy')">
 				<view class="menu-left">
 					<text class="iconfont icon-butie menu-icon"></text>
 					<text class="menu-text">周补贴</text>
+				</view>
+				<view class="menu-right">
+					<text class="menu-arrow">›</text>
+				</view>
+			</view>
+			<view class="menu-item" @tap="goToPage('/subPackages/page2/pages/rights/center')">
+				<view class="menu-left">
+					<text class="iconfont icon-wodejiangli menu-icon menu-icon-red"></text>
+					<text class="menu-text">权益中心</text>
 				</view>
 				<view class="menu-right">
 					<text class="menu-arrow">›</text>
@@ -258,6 +268,27 @@ const pointsLogCount = ref(0)
 
 // 优惠券数量
 const couponCount = ref(0)
+
+// 咯哒蛋数量（后端接口未开发，暂用占位值 0）
+const kadaEggCount = ref(0)
+
+// 咯哒券数量（后端接口未开发，暂用占位值 0）
+const kadaCouponCount = ref(0)
+
+/**
+ * 加载咯哒蛋、咯哒券数量
+ * 后端接口尚未开发，先保留空壳，待接口就绪后在此赋值即可
+ */
+const loadKadaAssets = async () => {
+	try {
+		// TODO: 接入后端接口，例如：
+		// const res = await getKadaAssets()
+		// kadaEggCount.value = res.data?.kada_egg ?? 0
+		// kadaCouponCount.value = res.data?.kada_coupon ?? 0
+	} catch (error) {
+		console.error('加载咯哒蛋/咯哒券失败', error)
+	}
+}
 
 /**
  * 加载积分余额
@@ -1371,6 +1402,7 @@ onShow(async () => {
 	loadPointsBalance()
 	loadPointsLogCount()
 	loadCouponCount()
+	loadKadaAssets()
 })
 
 // 页面卸载时移除事件监听
@@ -1981,6 +2013,11 @@ onUnmounted(() => {
 	-moz-osx-font-smoothing: grayscale;
 	display: inline-block;
 	line-height: 1;
+}
+
+/* 权益中心礼物盒 icon 单独着色 */
+.menu-icon.menu-icon-red {
+	color: #ff4757;
 }
 
 .menu-icon-like {

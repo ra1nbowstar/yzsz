@@ -998,7 +998,7 @@ onLoad((options) => {
       const userMobile = userInfo.mobile || userInfo.phone || ''
       if (userMobile && /^\d{11}$/.test(userMobile)) {
         formData.value.phone = userMobile
-        console.log('[地址编辑] 从用户信息填充手机号:', userMobile)
+        console.log('[地址编辑] 从用户信息填充手机号:', String(userMobile).slice(0, 3) + '****' + String(userMobile).slice(-4))
       } else {
         console.log('[地址编辑] 用户信息中没有有效的手机号，跳过填充')
       }

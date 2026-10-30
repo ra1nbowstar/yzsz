@@ -910,14 +910,11 @@ const doConfirmReceiveApi = async () => {
   try {
     uni.showLoading({ title: '处理中...', mask: true })
     console.log('[商户订单详情] 确认收货，订单号:', orderNo, '有流水号:', !!transactionIdStr)
-    if (transactionIdStr && transactionIdStr !== 'undefined' && transactionIdStr !== 'null') {
-      await confirmReceive({
-        order_number: orderNo,
-        transaction_id: transactionIdStr
-      })
-    } else {
-      await updateOrderStatus(orderNo, 'completed', '商户确认送达')
-    }
+    // 完成状态由服务端/微信回调驱动，不再由前端用 /order/status 直接推到 completed
+    await confirmReceive({
+      order_number: orderNo,
+      transaction_id: transactionIdStr && transactionIdStr !== 'undefined' && transactionIdStr !== 'null' ? transactionIdStr : ''
+    })
     order.value.status = 'completed'
     uni.hideLoading()
     uni.showToast({ title: '订单已完成', icon: 'success' })

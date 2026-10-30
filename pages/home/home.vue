@@ -744,7 +744,7 @@ const tryBindReferrerOnHome = async (retryCount = 0, maxRetries = 3) => {
 				try {
 					console.log('📤 [首页推荐人绑定] 调用 getMobileByUserId 接口...')
 					const mobileRes = await getMobileByUserId(userId, 'gm2025')
-					console.log('📥 [首页推荐人绑定] 通过user_id获取手机号响应:', mobileRes)
+					console.log('📥 [首页推荐人绑定] 通过user_id获取手机号响应')
 					
 					// 解析手机号（兼容多种响应格式）
 					if (mobileRes) {
@@ -766,7 +766,7 @@ const tryBindReferrerOnHome = async (retryCount = 0, maxRetries = 3) => {
 						}
 						
 						if (userMobile) {
-							console.log('✅ [首页推荐人绑定] 通过user_id成功获取手机号:', userMobile)
+							console.log('✅ [首页推荐人绑定] 通过user_id成功获取手机号:', String(userMobile).slice(0, 3) + '****' + String(userMobile).slice(-4))
 							// 保存手机号到本地存储
 							userInfo.mobile = userMobile
 							userInfo.phone = userMobile
@@ -789,7 +789,7 @@ const tryBindReferrerOnHome = async (retryCount = 0, maxRetries = 3) => {
 				console.warn('⚠️ [首页推荐人绑定] 没有user_id，无法通过user_id获取手机号')
 			}
 		} else {
-			console.log('✅ [首页推荐人绑定] 从userInfo中获取到手机号:', userMobile)
+			console.log('✅ [首页推荐人绑定] 从userInfo中获取到手机号:', String(userMobile).slice(0, 3) + '****' + String(userMobile).slice(-4))
 		}
 		
 		// 4. 如果还是没有 userMobile，且未达到最大重试次数，等待后重试

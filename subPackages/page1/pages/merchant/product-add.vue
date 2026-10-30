@@ -401,6 +401,7 @@ import { createProduct, updateProduct, uploadProductImages, updateProductImages,
 import config from '@/utils/config.js'
 import { normalizeRemoteUrl, isAbsoluteHttpUrl } from '@/utils/imageUrl.js'
 import { chooseImageWithPermission } from '../../utils/permission.js'
+import { quickCheck, SECURITY_SCENE } from '@/utils/security.js'
 
 const productId = ref('')
 const isMerchantOfflineOnly = ref(false) // 商家端：仅线下售卖，商品固定为下架状态不可改
@@ -1305,6 +1306,19 @@ const publishProduct = async () => {
     uni.showToast({ title: '请输入商品名称', icon: 'none' })
     return
   }
+
+  // 内容安全检测：商品名称、描述（P2-3）
+  const _nameOk = await quickCheck(productForm.value.name.trim(), { scene: SECURITY_SCENE.PROFILE })
+  if (!_nameOk) {
+    return
+  }
+  const _descText = (productForm.value.description || '').trim()
+  if (_descText) {
+    const _descOk = await quickCheck(_descText, { scene: SECURITY_SCENE.PROFILE })
+    if (!_descOk) {
+      return
+    }
+  }
   
   if (!productForm.value.category) {
     uni.showToast({ title: '请选择商品分类', icon: 'none' })
@@ -1826,7 +1840,12 @@ const publishProduct = async () => {
       }
       
       console.log('[商品更新] 发送更新请求，SKU数量:', updateData.skus.length)
-      await updateProduct(productId.value, updateData)
+      const updateRes = await updateProduct(productId.value, updateData)
+      // 内容审核：审核失败/未绑定微信审核身份时不写入商品，不得提示「发布成功」
+      if (updateRes && (updateRes.success === false || updateRes.ok === false)) {
+        const failMsg = updateRes.message || updateRes.msg || updateRes.detail || '商品未通过内容审核，更新失败'
+        throw new Error(typeof failMsg === 'string' ? failMsg : '商品未通过内容审核，更新失败')
+      }
       console.log('[商品更新] 更新成功')
     } else {
       console.log('[商品创建] ========== 创建商品 ==========')
@@ -1847,7 +1866,12 @@ const publishProduct = async () => {
       console.log('[商品创建] 发送创建请求，SKU数量:', cleanProductData.skus?.length || 0)
       
       const res = await createProduct(cleanProductData)
-      productIdResult = res.data?.id || res.id
+      productIdResult = res && (res.data?.id || res.id)
+      // 内容审核：审核失败/未绑定微信审核身份时，后端不写入商品且不返回商品ID，不得提示「发布成功」
+      if (!productIdResult) {
+        const failMsg = res && (res.message || res.msg || res.detail)
+        throw new Error(typeof failMsg === 'string' && failMsg ? failMsg : '商品未通过内容审核，发布失败')
+      }
       console.log('[商品创建] 创建成功，商品ID:', productIdResult)
     }
     

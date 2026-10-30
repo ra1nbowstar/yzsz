@@ -61,9 +61,9 @@ export function saveWechatSession(session) {
     uni.setStorageSync('wechatInfo', wechatInfo)
     if (wechatInfo.openid) {
       try { uni.setStorageSync('openid', wechatInfo.openid) } catch (e) {}
-      console.log('[saveWechatSession] 已保存 openid:', String(wechatInfo.openid).substring(0,10) + '...')
+      console.log('[saveWechatSession] 已保存 openid')
     }
-    console.log('[saveWechatSession] wechatInfo 已保存:', wechatInfo)
+    console.log('[saveWechatSession] wechatInfo 已保存')
     return wechatInfo
   } catch (err) {
     console.error('[saveWechatSession] 保存微信会话信息失败:', err)

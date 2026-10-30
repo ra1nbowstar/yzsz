@@ -936,7 +936,8 @@ const submitFreeOrder = async () => {
         quantity: quantity,
         unit_price: parseFloat(item.price) || 0,
         specs: specsValue,
-        sku: skuValue
+        sku: skuValue,
+        sku_id: item.sku_id ?? item.skuId ?? null
       }
     })
 
@@ -947,7 +948,8 @@ const submitFreeOrder = async () => {
         quantity: item.quantity,
         price: item.unit_price,
         specs: item.specs || '',
-        sku: item.sku || ''
+        sku: item.sku || '',
+        sku_id: item.sku_id ?? null
       }))
       orderRequestData = {
         user_id: finalUserId,
@@ -1252,7 +1254,8 @@ const submitOrder = async () => {
       quantity: quantity,
       unit_price: parseFloat(item.price) || 0,
       specs: specsValue,
-      sku: skuValue
+      sku: skuValue,
+      sku_id: item.sku_id ?? item.skuId ?? null
     }
   })
 
@@ -1263,7 +1266,8 @@ const submitOrder = async () => {
       quantity: item.quantity,
       price: item.unit_price,
       specs: item.specs || '',
-      sku: item.sku || ''
+      sku: item.sku || '',
+      sku_id: item.sku_id ?? null
     }))
     orderRequestData = {
       user_id: finalUserId,

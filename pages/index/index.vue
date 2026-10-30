@@ -646,7 +646,7 @@ const handleLogin = async () => {
 }
 
 const onGetPhoneNumber = async (e) => {
-	console.log('[手机号登录] 获取手机号回调:', e)
+	console.log('[手机号登录] 获取手机号回调')
 
 	// 0. 检查用户是否同意协议
 	if (!agreedToTerms.value) {
@@ -691,7 +691,7 @@ const onGetPhoneNumber = async (e) => {
 			nickName: '微信用户' // 默认昵称，登录成功后用户可选择是否使用微信昵称
 		}
 		
-		console.log('[手机号快捷登录] 发送参数（get-phone 流程）:', payload)
+		console.log('[手机号快捷登录] 发送参数（get-phone 流程）')
 
 		// 3.3 调用后端（后端用 phone_code 调 get-phone / 微信接口换取手机号）
 		const res = await wechatLogin(payload)
@@ -1097,7 +1097,7 @@ const handleWeChatLogin = async () => {
 						
 						if (openidToSave) {
 							uni.setStorageSync('openid', openidToSave)
-							console.log('[微信登录] 已保存 OpenID:', openidToSave.substring(0, 10) + '...')
+							console.log('[微信登录] 已保存 OpenID')
 						} else {
 							console.warn('[微信登录] 未找到 OpenID，后端返回数据:', {
 								hasOpenid: !!res.openid,

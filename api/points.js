@@ -32,7 +32,7 @@ export const updatePointsWithAutoMobile = async (params) => {
   if (!mobile) {
     try {
       mobile = await getActualMobileFromBackend()
-      console.log('[积分增减API] 自动获取的手机号:', mobile)
+      console.log('[积分增减API] 自动获取的手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
     } catch (error) {
       console.error('[积分增减API] 获取手机号失败:', error)
       // 如果获取失败，尝试使用本地存储的手机号
@@ -72,7 +72,7 @@ const getActualMobileFromBackend = async () => {
     }
 
     const res = await getMobileByUserId(userId, 'gm2025')
-    console.log('[积分API] 从后端获取手机号响应:', res)
+    console.log('[积分API] 从后端获取手机号响应')
 
     // 解析返回的手机号（兼容多种响应格式）
     let mobile = null
@@ -103,7 +103,7 @@ const getActualMobileFromBackend = async () => {
     const userInfo = uni.getStorageSync('userInfo') || {}
     const localMobile = userInfo.mobile || userInfo.phone
     if (localMobile && /^\d{11}$/.test(localMobile)) {
-      console.log('[积分API] 使用本地存储的手机号:', localMobile)
+      console.log('[积分API] 使用本地存储的手机号:', String(localMobile).slice(0, 3) + '****' + String(localMobile).slice(-4))
       return localMobile
     }
     throw error
@@ -123,20 +123,20 @@ export const getPointsBalance = async (params = {}) => {
     // 如果没有传入有效的手机号，自动获取
     try {
       mobile = await getActualMobileFromBackend()
-      console.log('[积分余额API] 从后端获取的实际手机号:', mobile)
+      console.log('[积分余额API] 从后端获取的实际手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
     } catch (error) {
       console.error('[积分余额API] 获取实际手机号失败:', error)
       // 如果获取失败，尝试使用本地存储的手机号
       const userInfo = uni.getStorageSync('userInfo') || {}
       mobile = userInfo.mobile || userInfo.phone
       if (mobile && /^\d{11}$/.test(mobile)) {
-        console.log('[积分余额API] 使用本地存储的手机号:', mobile)
+        console.log('[积分余额API] 使用本地存储的手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
       } else {
         return Promise.reject(new Error('无法获取用户手机号，请先登录'))
       }
     }
   } else {
-    console.log('[积分余额API] 使用传入的手机号:', mobile)
+    console.log('[积分余额API] 使用传入的手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
   }
   
   try {
@@ -185,20 +185,20 @@ export const getPointsLog = async (params = {}) => {
     // 获取实际手机号并添加到参数中
     try {
       mobile = await getActualMobileFromBackend()
-      console.log('[积分流水API] 从后端获取的实际手机号:', mobile)
+      console.log('[积分流水API] 从后端获取的实际手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
     } catch (error) {
       console.error('[积分流水API] 获取实际手机号失败:', error)
       // 如果获取失败，尝试使用本地存储的手机号
       const userInfo = uni.getStorageSync('userInfo') || {}
       mobile = userInfo.mobile || userInfo.phone
       if (mobile && /^\d{11}$/.test(mobile)) {
-        console.log('[积分流水API] 使用本地存储的手机号:', mobile)
+        console.log('[积分流水API] 使用本地存储的手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
       } else {
         return Promise.reject(new Error('无法获取用户手机号，请先登录'))
       }
     }
   } else {
-    console.log('[积分流水API] 使用传入的手机号:', mobile)
+    console.log('[积分流水API] 使用传入的手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
   }
 
   // 构建请求参数，使用API文档中的参数名

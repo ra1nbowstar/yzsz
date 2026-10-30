@@ -204,6 +204,14 @@ export const createJsapiOrder = (data) => {
  * @param {Array} data.products 商品列表（兼容旧版本，已废弃）
  * @param {Object} data.address 收货地址（兼容旧版本，已废弃）
  */
+// 严格正整数校验：数量必须为 >0 的整数，非法返回 null
+const toStrictPositiveInt = (v) => {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  if (!Number.isInteger(n) || n <= 0) return null
+  return n
+}
+
 export const createOrder = (data) => {
   console.log('[createOrder] 接收到的 data:', data);  // 新增
   // 构建新的接口格式
@@ -220,10 +228,10 @@ export const createOrder = (data) => {
     requestData.buy_now = true
     requestData.buy_now_items = data.buy_now_items.map(item => ({
       product_id: item.product_id || item.id,
-      quantity: parseInt(item.quantity) || 1,
+      quantity: item.quantity,
       price: item.price || item.unit_price || 0,
       specs: item.specs || item.spec || '',
-      sku: item.sku || item.sku_code || ''
+      sku_id: item.sku_id ?? item.skuId ?? null
     }))
   }
   
@@ -233,10 +241,10 @@ export const createOrder = (data) => {
     requestData.buy_now = true
     requestData.buy_now_items = data.items.map(item => ({
       product_id: item.product_id || item.id,
-      quantity: parseInt(item.quantity) || 1,
+      quantity: item.quantity,
       price: item.unit_price || item.price || 0,
       specs: item.specs || item.spec || '',
-      sku: item.sku || item.sku_code || ''
+      sku_id: item.sku_id ?? item.skuId ?? null
     }))
   }
   
@@ -244,10 +252,10 @@ export const createOrder = (data) => {
   if (requestData.buy_now && data.products && !requestData.buy_now_items) {
     requestData.buy_now_items = data.products.map(item => ({
       product_id: item.product_id || item.id,
-      quantity: parseInt(item.quantity) || 1,
+      quantity: item.quantity,
       price: item.price || item.unit_price || 0,
       specs: item.specs || item.spec || '',
-      sku: item.sku || item.sku_code || ''
+      sku_id: item.sku_id ?? item.skuId ?? null
     }))
   }
   
@@ -283,6 +291,20 @@ export const createOrder = (data) => {
     if (data.pointsDiscount != null) {
       requestData.points_discount = data.pointsDiscount
     }
+  // 严格校验：商品数量必须为正整数，且必须携带商品ID
+  if (requestData.buy_now_items && requestData.buy_now_items.length > 0) {
+    for (const item of requestData.buy_now_items) {
+      if (!item.product_id) {
+        return Promise.reject(new Error('商品ID不能为空'))
+      }
+      const q = toStrictPositiveInt(item.quantity)
+      if (q == null) {
+        return Promise.reject(new Error('商品数量必须为正整数'))
+      }
+      item.quantity = q
+    }
+  }
+
   console.log('[createOrder] 接收到的 data.coupon_ids:', data.coupon_ids);	
   console.log('[createOrder] 最终请求数据:', JSON.stringify(requestData, null, 2));
   return request.post('/order/create', requestData)
@@ -330,7 +352,7 @@ export const payOrder = (orderNumber, payWay, couponId = null, pointsToUse = nul
   // 如果是微信支付且提供了openid，传递给后端
   if (payWay === 'wechat' && openid) {
     requestData.openid = openid
-    console.log('[payOrder] 微信支付，传递openid:', openid.substring(0, 10) + '...')
+    // openid 脱敏：不再打印具体值（P2-4）
   }
   
   return request.post('/order/pay', requestData).catch(err => {

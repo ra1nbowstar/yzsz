@@ -506,7 +506,7 @@ const editPhone = async () => {
 						if (backendMobile && typeof backendMobile === 'string' && backendMobile.trim()) {
 							// 直接使用后端返回的非空字符串作为 oldMobile（支持 wx_... 等格式）
 							oldMobile = backendMobile.trim()
-							console.log('[设置页面] 使用后端手机号作为 oldMobile:', oldMobile)
+							console.log('[设置页面] 使用后端手机号作为 oldMobile:', String(oldMobile).slice(0, 3) + '****' + String(oldMobile).slice(-4))
 						} else {
 							// 保留空字符串，由 api 层决定是否发送 old_mobile
 							console.warn('[设置页面] 未从后端解析到可用手机号字符串，后续将由 api 层决定是否包含 old_mobile')
@@ -930,7 +930,7 @@ const fetchMobileAndUpdateUserInfo = async () => {
 		
 		// 步骤1: 调用接口获取手机号
 		const res = await getMobileByUserId(userId, 'gm2025')
-		console.log('[设置页面] 获取手机号接口响应:', res)
+		console.log('[设置页面] 获取手机号接口响应')
 		
 		// 解析返回的手机号（兼容多种响应格式）
 		let mobile = null
@@ -959,7 +959,7 @@ const fetchMobileAndUpdateUserInfo = async () => {
 		}
 		
 		mobile = mobile.trim()
-		console.log('[设置页面] 解析到的手机号:', mobile)
+		console.log('[设置页面] 解析到的手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
 		
 		// 步骤2: 保存手机号到本地存储（确保保留 user_id 和头像）
 		const preservedUserId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
@@ -983,7 +983,7 @@ const fetchMobileAndUpdateUserInfo = async () => {
 		const existingMobile = storedUserInfo.mobile || storedUserInfo.phone
 		if (existingMobile && /^\d{11}$/.test(existingMobile)) {
 			// 本地已有有效手机号，保留它（用户可能手动修改过）
-			console.log('[设置页面] 本地已有有效手机号，保留本地手机号:', existingMobile)
+			console.log('[设置页面] 本地已有有效手机号，保留本地手机号:', String(existingMobile).slice(0, 3) + '****' + String(existingMobile).slice(-4))
 			updatedUserInfo.mobile = existingMobile
 			updatedUserInfo.phone = existingMobile
 		} else if (isValidPhone) {
@@ -1002,7 +1002,7 @@ const fetchMobileAndUpdateUserInfo = async () => {
 		uni.setStorageSync('userInfo', updatedUserInfo)
 		console.log('[设置页面] 手机号已保存到本地存储:', {
 			user_id: preservedUserId,
-			mobile: mobile,
+			mobile: String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4),
 			avatar: preservedAvatar || '未设置'
 		})
 		

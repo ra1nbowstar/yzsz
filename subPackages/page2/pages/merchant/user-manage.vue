@@ -251,12 +251,12 @@ const loadUserInfo = async () => {
 		levelReason.value = ''
 		
 		// 获取联创星级 - 需要单独调用接口
-		console.log('[用户管理] 开始获取联创星级，用户信息:', userInfo.value)
+		console.log('[用户管理] 开始获取联创星级')
 		try {
 			const userId = userInfo.value.id || userInfo.value.user_id || userInfo.value.uid || userInfo.value.userId
 			const mobile = userInfo.value.mobile || userInfo.value.phone
 			
-			console.log('[用户管理] 提取的userId:', userId, 'mobile:', mobile)
+			console.log('[用户管理] 提取的userId:', userId, 'mobile:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
 			
 			let unilevel = null
 			// 优先使用 user_id 查询（更准确）
@@ -318,10 +318,10 @@ const loadUserInfo = async () => {
 				}
 			} else if (mobile) {
 				// 如果没有user_id，使用手机号查询
-				console.log('[用户管理] 准备调用 getUniLevel，mobile:', mobile)
+				console.log('[用户管理] 准备调用 getUniLevel，mobile:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
 				try {
 					const uniLevelRes = await getUniLevel(mobile)
-					console.log('[用户管理] getUniLevel 完整响应:', JSON.stringify(uniLevelRes, null, 2))
+					console.log('[用户管理] getUniLevel 响应成功')
 					unilevel = uniLevelRes.data?.unilevel || uniLevelRes.unilevel || 0
 					console.log('[用户管理] 通过手机号获取联创星级:', unilevel)
 				} catch (error) {
@@ -362,7 +362,7 @@ const loadUserInfo = async () => {
 			console.log('[用户管理] 异常处理：unilevelLevel.value 设置为:', unilevelLevel.value)
 		}
 		
-		console.log('[用户管理] 加载用户信息成功:', userInfo.value)
+		console.log('[用户管理] 加载用户信息成功')
 		console.log('[用户管理] 联创星级:', unilevelLevel.value)
 	} catch (error) {
 		console.error('加载用户信息失败', error)
@@ -508,7 +508,7 @@ const setUnilevel = async () => {
 	
 	if (!userId) {
 		uni.showToast({ title: '用户信息不完整，缺少用户ID', icon: 'none' })
-		console.error('[设置联创星级] 用户信息:', userInfo.value)
+		console.error('[设置联创星级] 用户信息不完整，缺少用户ID')
 		return
 	}
 	

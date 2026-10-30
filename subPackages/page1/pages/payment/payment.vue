@@ -284,20 +284,12 @@ const handlePayment = async () => {
 
       console.log('[微信支付] OpenID 获取检查:', {
         wechatInfo: uni.getStorageSync('wechatInfo') ? '存在' : '不存在',
-        wechatInfoOpenid: (parseMaybeJson(uni.getStorageSync('wechatInfo')) || uni.getStorageSync('wechatInfo'))?.openid || '无',
-        storageOpenid: uni.getStorageSync('openid') || '无',
-        userInfoOpenid: (uni.getStorageSync('userInfo') || {}).openid || '无',
-        userInfoWechatOpenid: (uni.getStorageSync('userInfo') || {}).wechat_openid || '无',
-        finalOpenid: openid || '未找到'
+        finalOpenidLen: (openid || '').length
       })
 
       if (!openid) {
         uni.hideLoading()
-        console.error('[微信支付] OpenID 未找到，存储的数据:', {
-          wechatInfo: uni.getStorageSync('wechatInfo'),
-          userInfo: uni.getStorageSync('userInfo') || '不存在',
-          storageOpenid: uni.getStorageSync('openid') || '无'
-        })
+        console.error('[微信支付] OpenID 未找到')
         uni.showModal({
           title: '提示',
           content: '微信支付需要微信登录信息，请重新使用微信登录后再试',
@@ -309,7 +301,7 @@ const handlePayment = async () => {
         return
       }
 
-      console.log('[微信支付] 成功获取 OpenID:', String(openid).substring(0, 10) + '...')
+      console.log('[微信支付] 成功获取 OpenID')
       const { couponId, pointsToUse } = getPaymentParams()
       console.log('[微信支付] 当前订单优惠信息（仅日志，不再传给 create-order）:', {
         couponId,
@@ -324,6 +316,18 @@ const handlePayment = async () => {
       })
       
       uni.hideLoading()
+
+      // 金额以后端预下单返回的 total_fee（分）为准
+      if (res && res.total_fee != null) {
+        const serverFee = Number(res.total_fee)
+        if (Number.isFinite(serverFee) && serverFee >= 0) {
+          const serverYuan = serverFee / 100
+          if (Number(paymentData.value.amount || 0) !== serverYuan) {
+            paymentData.value.amount = serverYuan.toFixed(2)
+            console.log('[微信支付] 已用后端预下单金额覆盖本地金额:', serverYuan)
+          }
+        }
+      }
       
       // 检查返回结果（兼容多种后端返回格式：data.timeStamp / data.pay_params / pay_params / prepay_id）
       const hasPayParams = Boolean(
@@ -737,8 +741,7 @@ onLoad((options) => {
       console.log('订单数据:', paymentData.value.orderData)
       console.log('商品列表:', paymentData.value.orderData?.items)
       
-      // 为避免同一订单多次支付金额不一致，必要时用后端订单详情里的实付金额「补充」本地 amount：
-      // 仅在当前 amount 为空或 <=0 时才覆盖，避免正常 0.03 被错误改成 0
+      // 金额以后端订单详情为准：订单详情返回有效正数金额时，覆盖本地计算金额
       if (paymentData.value.orderNo) {
         const originalAmountNum = Number(paymentData.value.amount || 0)
         getOrderDetail(paymentData.value.orderNo)
@@ -748,13 +751,15 @@ onLoad((options) => {
             const backendAmount = Number(
               od.actual_amount ?? od.actualAmount ?? od.total_amount ?? od.totalAmount ?? 0
             )
-            if (!Number.isNaN(backendAmount) && backendAmount > 0 && (!originalAmountNum || originalAmountNum <= 0)) {
+            if (!Number.isNaN(backendAmount) && backendAmount > 0) {
               // 同步到 paymentData，用于展示与后续 create-order 的金额计算
               paymentData.value.orderData = paymentData.value.orderData || {}
               paymentData.value.orderData.actualAmount = backendAmount
               paymentData.value.orderData.totalAmount = backendAmount
-              paymentData.value.amount = backendAmount.toFixed(2)
-              console.log('[支付页面] 已用订单详情金额补充本地金额:', backendAmount)
+              if (originalAmountNum !== backendAmount) {
+                paymentData.value.amount = backendAmount.toFixed(2)
+                console.log('[支付页面] 已用后端订单详情金额覆盖本地金额:', backendAmount)
+              }
             }
           })
           .catch((e) => {

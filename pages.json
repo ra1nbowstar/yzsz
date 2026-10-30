@@ -361,6 +361,24 @@
 					}
 				},
 				{
+					"path": "pages/rights/center",
+					"style": {
+						"navigationBarTitleText": "权益中心"
+					}
+				},
+				{
+					"path": "pages/rights/ledger",
+					"style": {
+						"navigationBarTitleText": "流水台账"
+					}
+				},
+				{
+					"path": "pages/rights/exchange",
+					"style": {
+						"navigationBarTitleText": "权益兑换中心"
+					}
+				},
+				{
 					"path": "pages/finance/flow",
 					"style": {
 						"navigationBarTitleText": "资金流水"

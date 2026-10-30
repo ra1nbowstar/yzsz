@@ -499,7 +499,7 @@ const loadTeamMembers = async (member) => {
 			return
 		}
 		
-		console.log('[加载团队成员] 开始加载，成员手机号:', memberMobile)
+		console.log('[加载团队成员] 开始加载，成员手机号:', String(memberMobile).slice(0, 3) + '****' + String(memberMobile).slice(-4))
 		
 		// 查看下一级应该显示该成员的直推成员，使用 getReferDirect 接口
 		const res = await getReferDirect({ 

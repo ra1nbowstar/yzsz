@@ -302,6 +302,7 @@ const loadCartList = async () => {
         return {
           id: item.id || item.cart_id,
           productId: productId,
+          sku_id: item.sku_id ?? item.skuId ?? null,
           name: productData.name || item.product_name || item.name || '未知商品',
           price: productPrice,
           quantity: parseInt(item.quantity || 1),
@@ -335,6 +336,7 @@ const loadCartList = async () => {
         return {
           id: item.id || item.cart_id,
           productId: item.product_id,
+          sku_id: item.sku_id ?? item.skuId ?? null,
           name: item.product_name || item.name || '未知商品',
           price: parseFloat(item.unit_price || item.price || 0),
           quantity: parseInt(item.quantity || 1),
@@ -635,6 +637,7 @@ const checkout = () => {
   // 确保传递的商品数据格式正确
   const orderItems = selectedItems.value.map(item => ({
     id: item.productId,
+    sku_id: item.sku_id ?? null,
     name: item.name,
     price: parseFloat(item.price) || 0,
     quantity: parseInt(item.quantity) || 1,

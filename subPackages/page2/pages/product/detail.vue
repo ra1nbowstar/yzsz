@@ -1170,10 +1170,12 @@ const buyNow = async () => {
 	
 	// 2. 获取选中的SKU信息（从选中的样式获取）
 	let skuCode = null
+	let skuId = null
 	let specifications = {}
 	if (selectedStyleIndex.value !== null && selectedStyleIndex.value >= 0 && productStyles.value[selectedStyleIndex.value]) {
 		const selectedStyle = productStyles.value[selectedStyleIndex.value]
 		skuCode = selectedStyle.sku_code
+		skuId = selectedStyle.sku_id ?? null
 		specifications = selectedStyle.specifications || {}
 	}
 	
@@ -1206,6 +1208,7 @@ const buyNow = async () => {
 			maxPointsDeduction: product.value.maxPointsDeduction || product.value.max_points_discount || 0,
 			cash_only: product.value.cash_only, // 新增：传递现金标识
 			sku: skuCode || '',
+			sku_id: skuId,
 			specs: selectedSpecs.value || {},
 			specifications: Object.keys(specifications).length > 0 ? specifications : undefined
 		}

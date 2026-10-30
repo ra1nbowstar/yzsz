@@ -401,7 +401,7 @@ const fetchMobileAndUpdateUserInfo = async () => {
 
 		// 使用 user_id 和 key 获取手机号
 		const res = await getMobileByUserId(userId, 'gm2025')
-		console.log('[用户页面] 获取手机号接口响应:', res)
+		console.log('[用户页面] 获取手机号接口响应')
 
 		// 解析返回的手机号（兼容多种响应格式）
 		let mobile = null
@@ -418,7 +418,7 @@ const fetchMobileAndUpdateUserInfo = async () => {
 		}
 
 		if (!mobile) {
-			console.log('[用户页面] 获取手机号失败，响应数据:', res)
+			console.log('[用户页面] 获取手机号失败')
 			// 如果获取手机号失败，尝试使用本地存储的手机号
 			mobile = storedUserInfo.mobile || storedUserInfo.phone
 			if (!mobile) {
@@ -431,7 +431,7 @@ const fetchMobileAndUpdateUserInfo = async () => {
 			}
 		}
 
-		console.log('[用户页面] 获取到手机号:', mobile)
+		console.log('[用户页面] 获取到手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
 
 		// 保存手机号到本地存储（确保 user_id 和本地头像被保留）
 		const preservedUserId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
@@ -511,7 +511,7 @@ const loadUserInfo = async () => {
 			console.log('[用户页面] 从本地存储加载用户信息:', {
 				user_id: storedUserInfo.user_id || storedUserInfo.id,
 				name: storedUserInfo.name,
-				mobile: storedUserInfo.mobile || storedUserInfo.phone,
+				mobile: '***',
 				avatar_path: storedUserInfo.avatar_path,
 				avatar: storedUserInfo.avatar,
 				is_merchant: storedUserInfo.is_merchant,
@@ -1209,7 +1209,7 @@ onShow(async () => {
 					merged.isMerchant = isMerchantFlag
 					merged.is_platform = isMerchantFlag
 					merged.isPlatform = isMerchantFlag
-					console.log('[用户页面] checkIsMerchant 返回:', isMerchantFlag, 'mobile:', mobileForCheck)
+					console.log('[用户页面] checkIsMerchant 返回:', isMerchantFlag, 'mobile:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))
 				}
 			} catch (e) {
 				console.warn('[用户页面] 调用 checkIsMerchant 失败:', e)

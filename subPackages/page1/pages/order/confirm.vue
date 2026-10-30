@@ -720,13 +720,26 @@ const submitFreeOrder = async () => {
       product_id: item.productId || item.id,
       quantity: item.quantity,
       specs: item.spec || '',
-      price: item.price
+      price: item.price,
+      sku_id: item.sku_id ?? item.skuId ?? null
     }))
     
+    // 配送地址：后端要求 platform 配送传 custom_address
+    const customAddress = selectedAddress.value ? {
+      consignee_name: selectedAddress.value.name || '',
+      consignee_phone: selectedAddress.value.phone || selectedAddress.value.mobile || '',
+      province: selectedAddress.value.province || '',
+      city: selectedAddress.value.city || '',
+      district: selectedAddress.value.district || '',
+      detail: selectedAddress.value.detail || ''
+    } : {}
+
     const orderData = {
       user_id: userId,
       address_id: selectedAddress.value.id,
       address: selectedAddress.value,
+      custom_address: customAddress,
+      buy_now: true,
       products: products,
       remark: orderRemark.value,
       delivery_type: selectedDelivery.value,
@@ -792,13 +805,26 @@ const submitPayOrder = async () => {
       product_id: item.productId || item.id,
       quantity: item.quantity,
       specs: item.spec || '',
-      price: item.price
+      price: item.price,
+      sku_id: item.sku_id ?? item.skuId ?? null
     }))
     
+    // 配送地址：后端要求 platform 配送传 custom_address
+    const customAddress = selectedAddress.value ? {
+      consignee_name: selectedAddress.value.name || '',
+      consignee_phone: selectedAddress.value.phone || selectedAddress.value.mobile || '',
+      province: selectedAddress.value.province || '',
+      city: selectedAddress.value.city || '',
+      district: selectedAddress.value.district || '',
+      detail: selectedAddress.value.detail || ''
+    } : {}
+
     const orderData = {
       user_id: userId,
       address_id: selectedAddress.value.id,
       address: selectedAddress.value,
+      custom_address: customAddress,
+      buy_now: true,
       products: products,
       remark: orderRemark.value,
       delivery_type: selectedDelivery.value,

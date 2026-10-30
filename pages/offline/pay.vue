@@ -850,13 +850,13 @@ const bindToMerchantIfOffline = async () => {
         console.log('[线下支付绑定] 买方缺少 mobile，尝试通过 user_id 查询手机号', { userId })
         const buyerRes = await getMobileByUserId(userId, 'gm2025')
         buyerMobile = resolveMobileFromApi(buyerRes)
-        console.log('[线下支付绑定] 买方手机号查询结果', { buyerMobile })
+        console.log('[线下支付绑定] 买方手机号查询结果', { buyerMobile: String(buyerMobile).slice(0, 3) + '****' + String(buyerMobile).slice(-4) })
       } catch (e) {
         console.error('[线下支付绑定] 买方手机号查询失败', e)
       }
     }
     if (!buyerMobile) {
-      console.warn('[线下支付绑定] 跳过：无法获取买方手机号', { mobile, userId })
+      console.warn('[线下支付绑定] 跳过：无法获取买方手机号', { mobile: String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4), userId })
       return
     }
     let referrerMobile = ''
@@ -864,7 +864,7 @@ const bindToMerchantIfOffline = async () => {
       console.log('[线下支付绑定] 开始：通过推荐人ID查询手机号', { referrerUserId })
       const refRes = await getMobileByUserId(referrerUserId, 'gm2025')
       referrerMobile = resolveMobileFromApi(refRes)
-      console.log('[线下支付绑定] 推荐人手机号查询结果', { referrerUserId, referrerMobile })
+      console.log('[线下支付绑定] 推荐人手机号查询结果', { referrerUserId, referrerMobile: String(referrerMobile).slice(0, 3) + '****' + String(referrerMobile).slice(-4) })
     } catch (e) {
       console.error('[线下支付绑定] 推荐人手机号查询失败', { referrerUserId, error: e?.message || e })
     }
@@ -873,7 +873,7 @@ const bindToMerchantIfOffline = async () => {
       return
     }
     if (String(referrerMobile) === String(buyerMobile)) {
-      console.warn('[线下支付绑定] 跳过：推荐人手机号与买方相同', { buyerMobile, referrerMobile })
+      console.warn('[线下支付绑定] 跳过：推荐人手机号与买方相同', { buyerMobile: String(buyerMobile).slice(0, 3) + '****' + String(buyerMobile).slice(-4), referrerMobile: String(referrerMobile).slice(0, 3) + '****' + String(referrerMobile).slice(-4) })
       return
     }
     const payload = { mobile: buyerMobile, referrer_mobile: referrerMobile }

@@ -121,17 +121,8 @@ export const getPhone = (code, userId) => {
     return Promise.reject(new Error('getPhone 参数 user_id 须为数字'))
   }
   const body = { code: code.trim(), user_id }
-  // 工作台日志：调用 POST /user/get-phone 的详细信息
-  const codeStr = body.code || ''
-  console.log('[getPhone] ========== POST /user/get-phone 调用详情 ==========')
-  console.log('[getPhone] 接口: POST /user/get-phone（微信手机号快速验证 mp-phone-number）')
-  console.log('[getPhone] 请求体:', JSON.stringify({ code: codeStr ? `${codeStr.substring(0, 12)}...` : '', user_id: body.user_id }))
-  console.log('[getPhone] 请求体详情:', {
-    code: codeStr ? `长度=${codeStr.length}, 前12字符=${codeStr.substring(0, 12)}...` : '(空)',
-    user_id: body.user_id,
-    user_id类型: typeof body.user_id
-  })
-  console.log('[getPhone] ================================================')
+  // 不打印 code 内容，仅保留长度用于排查（P2-4）
+  console.log('[getPhone] 调用 POST /user/get-phone，code 长度:', body.code.length)
   return request.post('/user/get-phone', body)
 }
 
@@ -155,7 +146,7 @@ const getActualMobileFromBackend = async () => {
     }
 
     const res = await getMobileByUserId(userId, 'gm2025')
-    console.log('[地址API] 从后端获取手机号响应:', res)
+    console.log('[地址API] 从后端获取手机号响应')
     
     // 解析返回的手机号（兼容多种响应格式）
     let mobile = null
@@ -195,7 +186,7 @@ const getActualMobileFromBackend = async () => {
     const userInfo = uni.getStorageSync('userInfo') || {}
     const localMobile = userInfo.mobile || userInfo.phone
     if (localMobile && /^\d{11}$/.test(localMobile)) {
-      console.log('[地址API] 使用本地存储的手机号:', localMobile)
+      console.log('[地址API] 使用本地存储的手机号:', String(localMobile).slice(0, 3) + '****' + String(localMobile).slice(-4))
       return localMobile
     }
     throw error
@@ -229,7 +220,7 @@ export const addAddress = async (data) => {
   if (!actualMobile || !/^\d{11}$/.test(actualMobile)) {
     try {
       actualMobile = await getActualMobileFromBackend()
-      console.log('[地址API] 从后端获取的实际手机号:', actualMobile)
+      console.log('[地址API] 从后端获取的实际手机号:', String(actualMobile).slice(0, 3) + '****' + String(actualMobile).slice(-4))
     } catch (error) {
       console.error('[地址API] 获取实际手机号失败:', error)
       return Promise.reject(new Error('无法获取用户手机号，请先登录'))
@@ -260,7 +251,7 @@ export const addAddress = async (data) => {
     addressData.lat = typeof data.lat === 'number' ? data.lat : parseFloat(data.lat) || 0
   }
   
-  console.log('[地址API] 新增地址，提交数据:', addressData)
+  console.log('[地址API] 新增地址')
   
   return request.post('/address', addressData)
 }
@@ -283,7 +274,7 @@ export const setDefaultAddress = async (data) => {
   // 获取实际手机号并添加到查询参数中
   try {
     const actualMobile = await getActualMobileFromBackend()
-    console.log('[设置默认地址API] 从后端获取的实际手机号:', actualMobile)
+    console.log('[设置默认地址API] 从后端获取的实际手机号:', String(actualMobile).slice(0, 3) + '****' + String(actualMobile).slice(-4))
     // 将 mobile 和 addr_id 作为查询参数发送（在URL中拼接）
     const url = `/address/default?addr_id=${addrId}&mobile=${encodeURIComponent(actualMobile)}`
     return request.put(url, {})
@@ -293,7 +284,7 @@ export const setDefaultAddress = async (data) => {
     const userInfo = uni.getStorageSync('userInfo') || {}
     const localMobile = userInfo.mobile || userInfo.phone
     if (localMobile && /^\d{11}$/.test(localMobile)) {
-      console.log('[设置默认地址API] 使用本地存储的手机号:', localMobile)
+      console.log('[设置默认地址API] 使用本地存储的手机号:', String(localMobile).slice(0, 3) + '****' + String(localMobile).slice(-4))
       const url = `/address/default?addr_id=${addrId}&mobile=${encodeURIComponent(localMobile)}`
       return request.put(url, {})
     }
@@ -314,7 +305,7 @@ export const deleteAddress = async (addrId) => {
   // 获取当前登录用户的实际手机号（从后端获取）
   try {
     const actualMobile = await getActualMobileFromBackend()
-    console.log('[删除地址API] 从后端获取的实际手机号:', actualMobile)
+    console.log('[删除地址API] 从后端获取的实际手机号:', String(actualMobile).slice(0, 3) + '****' + String(actualMobile).slice(-4))
     // 将 mobile 作为查询参数发送（在URL中拼接）
     const url = `/address/${addrId}?mobile=${encodeURIComponent(actualMobile)}`
     return request.delete(url)
@@ -324,7 +315,7 @@ export const deleteAddress = async (addrId) => {
     const userInfo = uni.getStorageSync('userInfo') || {}
     const localMobile = userInfo.mobile || userInfo.phone
     if (localMobile && /^\d{11}$/.test(localMobile)) {
-      console.log('[删除地址API] 使用本地存储的手机号:', localMobile)
+      console.log('[删除地址API] 使用本地存储的手机号:', String(localMobile).slice(0, 3) + '****' + String(localMobile).slice(-4))
       const url = `/address/${addrId}?mobile=${encodeURIComponent(localMobile)}`
       return request.delete(url)
     }
@@ -346,7 +337,7 @@ export const getAddressList = async (userId) => {
   // 获取当前登录用户的实际手机号（从后端获取）
   try {
     const actualMobile = await getActualMobileFromBackend()
-    console.log('[地址列表API] 从后端获取的实际手机号:', actualMobile)
+    console.log('[地址列表API] 从后端获取的实际手机号:', String(actualMobile).slice(0, 3) + '****' + String(actualMobile).slice(-4))
     // 将 mobile 作为查询参数发送
     return request.get('/address/list', { mobile: actualMobile })
   } catch (error) {
@@ -355,7 +346,7 @@ export const getAddressList = async (userId) => {
     const userInfo = uni.getStorageSync('userInfo') || {}
     const localMobile = userInfo.mobile || userInfo.phone
     if (localMobile && /^\d{11}$/.test(localMobile)) {
-      console.log('[地址列表API] 使用本地存储的手机号:', localMobile)
+      console.log('[地址列表API] 使用本地存储的手机号:', String(localMobile).slice(0, 3) + '****' + String(localMobile).slice(-4))
       return request.get('/address/list', { mobile: localMobile })
     }
     // 如果都没有，返回错误
@@ -391,7 +382,7 @@ export const setReturnAddress = async (data) => {
   
   const url = `/admin/platform-return-address?${queryParams.join('&')}`
   
-  console.log('[地址API] 设置退货地址，提交数据:', data)
+  console.log('[地址API] 设置退货地址')
   // POST请求，参数在URL中（query参数），body为空
   return request.post(url, {})
 }
@@ -433,7 +424,7 @@ export const updateAddress = async (addressId, data) => {
   if (!actualMobile || !/^\d{11}$/.test(actualMobile)) {
     try {
       actualMobile = await getActualMobileFromBackend()
-      console.log('[地址API] 更新地址，从后端获取的实际手机号:', actualMobile)
+      console.log('[地址API] 更新地址，从后端获取的实际手机号:', String(actualMobile).slice(0, 3) + '****' + String(actualMobile).slice(-4))
       // 更新data中的mobile
       data.mobile = actualMobile
     } catch (error) {
@@ -442,7 +433,7 @@ export const updateAddress = async (addressId, data) => {
     }
   }
   
-  console.log('[地址API] 更新地址，提交数据:', data)
+  console.log('[地址API] 更新地址')
   return request.put(`/address/${addressId}`, data)
 }
 
@@ -697,16 +688,13 @@ export const getMobileByUserId = (userId, key = 'gm2025') => {
     return Promise.reject(new Error('缺少用户ID'))
   }
   
-  console.log('[获取手机号API] 调用接口 /user/mobile，参数:', {
-    user_id: userId,
-    key: key
-  })
+  console.log('[获取手机号API] 调用接口 /user/mobile，user_id:', userId)
   
   return request.get('/user/mobile', {
     user_id: userId,
     key: key
   }).then(res => {
-    console.log('[获取手机号API] 接口响应成功:', res)
+    console.log('[获取手机号API] 接口响应成功')
     return res
   }).catch(error => {
     const code = error && (error.statusCode ?? error.code)
@@ -777,7 +765,7 @@ export const refreshUserInfo = async () => {
               mobile = mobileRes.data
             }
           }
-          if (mobile) console.log('[刷新用户信息] 通过 user_id 获取到手机号:', mobile)
+          if (mobile) console.log('[刷新用户信息] 通过 user_id 获取到手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
         } catch (merr) {
           console.warn('[刷新用户信息] 通过 user_id 获取手机号失败:', merr)
         }
@@ -873,9 +861,9 @@ export const refreshUserInfo = async () => {
           updatedUserInfo.isMerchant = true
           updatedUserInfo.is_platform = true
           updatedUserInfo.isPlatform = true
-          console.log('[刷新用户信息] checkIsMerchant 确认为商户:', mobileForCheck)
+          console.log('[刷新用户信息] checkIsMerchant 确认为商户:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))
         } else {
-          console.log('[刷新用户信息] checkIsMerchant 未确认为商户:', mobileForCheck)
+          console.log('[刷新用户信息] checkIsMerchant 未确认为商户:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))
         }
       }
     } catch (e) {

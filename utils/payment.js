@@ -24,7 +24,7 @@ export const createPayment = async ({ amount, product_name, store_name, note, ex
 
 // 生成收款码（占位，通常后端返回二维码内容或 URL）
 export const generateQRCode = async (code_token) => {
-  console.log('api代码为调用，生成收款码：', code_token)
+  console.log('api代码为调用，生成收款码')
   return new Promise((resolve) => {
     setTimeout(() => {
       // 返回一个可以作为二维码内容的字符串（前端可以直接用来渲染二维码）

@@ -236,10 +236,10 @@ const loadMemberDetail = async (mobile) => {
 		const referrerMobile = userData.referrer_mobile || userData.referrerMobile || userData.referrer?.mobile
 		if (referrerMobile) {
 			try {
-				console.log('[会员详情] 通过手机号调用 /user/info 接口获取推荐人信息:', referrerMobile)
+				console.log('[会员详情] 通过手机号调用 /user/info 接口获取推荐人信息:', String(referrerMobile).slice(0, 3) + '****' + String(referrerMobile).slice(-4))
 				const referrerInfoRes = await getUserInfo(referrerMobile)
 				const referrerInfo = referrerInfoRes.data || referrerInfoRes
-				console.log('[会员详情] 推荐人信息API返回:', referrerInfo)
+				console.log('[会员详情] 推荐人信息API返回')
 				
 				// 处理头像路径（可能是JSON字符串数组格式）
 				let avatarPath = referrerInfo.avatar_path || referrerInfo.avatar || ''

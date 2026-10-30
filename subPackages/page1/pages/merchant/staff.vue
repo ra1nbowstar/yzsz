@@ -115,7 +115,7 @@ const confirmAddStaff = async () => {
 		let mobile = null
 		try {
 			const mobileRes = await getMobileByUserId(staffId.value.trim(), 'gm2025')
-			console.log('[添加员工] 获取手机号响应:', mobileRes)
+			console.log('[添加员工] 获取手机号响应')
 			
 			// 解析返回的手机号（兼容多种响应格式）
 			if (mobileRes) {
@@ -136,7 +136,7 @@ const confirmAddStaff = async () => {
 				return
 			}
 			
-			console.log('[添加员工] 通过ID获取到手机号:', mobile)
+			console.log('[添加员工] 通过ID获取到手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
 		} catch (error) {
 			uni.hideLoading()
 			console.error('[添加员工] 获取手机号失败:', error)
