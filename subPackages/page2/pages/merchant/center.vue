@@ -13,7 +13,7 @@
     <!-- 数据统计 -->
     <view class="stats-overview">
       <view class="stats-item" @tap="goToPage('/subPackages/page2/pages/merchant/sales')">
-        <text class="stats-value">¥{{ formatPoints(todayStats.sales) }}</text>
+        <text class="stats-value">{{ permissionDenied ? '无权限' : '¥' + formatPoints(todayStats.sales) }}</text>
         <text class="stats-label">平台总流水</text>
       </view>
       <view class="stats-divider"></view>
@@ -28,7 +28,7 @@
       </view>
       <view class="stats-divider"></view>
       <view class="stats-item" @tap="goToPage('/subPackages/page1/pages/merchant/points-log')">
-        <text class="stats-value">{{ formatPoints(merchantInfo.points) }}</text>
+        <text class="stats-value">{{ permissionDenied ? '无权限' : formatPoints(merchantInfo.points) }}</text>
         <text class="stats-label">平台总积分</text>
       </view>
     </view>
@@ -216,6 +216,9 @@ const todayStats = ref({
   customers: 0
 })
 
+// 无平台管理员权限时，平台资金/积分接口会 403；不要把失败显示成 0
+const permissionDenied = ref(false)
+
 // 最近订单
 const recentOrders = ref([])
 
@@ -391,10 +394,12 @@ const refreshMerchantDashboard = async () => {
     const [ordersRes, pointsRes, revenueRes] = await Promise.all([
       getAllOrders({ page: 1, pageSize: 100 }),
       getCompanyPointsBalance().catch(err => {
+        if (err && (err.statusCode === 403 || err.code === 403)) permissionDenied.value = true
         console.error('[平台中心] 获取平台积分失败:', err)
         return { data: { company_points: 0 } }
       }),
       getPlatformRevenueBalance().catch(err => {
+        if (err && (err.statusCode === 403 || err.code === 403)) permissionDenied.value = true
         console.error('[平台中心] 获取平台资金失败:', err)
         return { data: { balance: 0 } }
       })

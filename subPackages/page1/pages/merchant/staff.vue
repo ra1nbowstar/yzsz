@@ -114,7 +114,7 @@ const confirmAddStaff = async () => {
 		// 通过ID获取手机号
 		let mobile = null
 		try {
-			const mobileRes = await getMobileByUserId(staffId.value.trim(), 'gm2025')
+			const mobileRes = await getMobileByUserId(staffId.value.trim())
 			console.log('[添加员工] 获取手机号响应')
 			
 			// 解析返回的手机号（兼容多种响应格式）
@@ -145,8 +145,8 @@ const confirmAddStaff = async () => {
 			return
 		}
 		
-		// 调用授权商户接口（使用获取到的手机号）
-		const url = `/user/grant-merchant?mobile=${encodeURIComponent(mobile)}&admin_key=gm2025`
+		// 调用授权商户接口（使用获取到的手机号，鉴权依赖 Bearer Token）
+		const url = `/user/grant-merchant?mobile=${encodeURIComponent(mobile)}`
 		const res = await request.post(url, {})
 		
 		uni.hideLoading()

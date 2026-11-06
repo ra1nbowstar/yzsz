@@ -464,38 +464,15 @@ const fetchMobileAndUpdateUserInfo = async () => {
 			return
 		}
 
-		// 开始获取手机号
-
-		// 使用 user_id 和 key 获取手机号
-		const res = await getMobileByUserId(userId, 'gm2025')
-		// 获取手机号接口响应
-
-		// 解析返回的手机号（兼容多种响应格式）
-		let mobile = null
-		if (res) {
-			if (typeof res === 'string') {
-				mobile = res
-			} else if (res.data) {
-				mobile = res.data.mobile || res.data.phone || res.data
-			} else if (res.mobile) {
-				mobile = res.mobile
-			} else if (res.phone) {
-				mobile = res.phone
-			}
-		}
+		// 普通用户只能使用本地登录信息中的手机号，不再调用管理员接口 /user/mobile
+		let mobile = storedUserInfo.mobile || storedUserInfo.phone
 
 		if (!mobile) {
-			// 获取手机号失败
-			// 如果获取手机号失败，尝试使用本地存储的手机号
-			mobile = storedUserInfo.mobile || storedUserInfo.phone
-			if (!mobile) {
-				// 本地也没有手机号，跳过调用 user/info 接口
-				// 如果没有手机号，至少显示本地存储的信息
-				if (storedUserInfo && Object.keys(storedUserInfo).length > 0) {
-					userInfo.value = storedUserInfo
-				}
-				return
+			// 本地没有手机号，至少显示本地存储的信息
+			if (storedUserInfo && Object.keys(storedUserInfo).length > 0) {
+				userInfo.value = storedUserInfo
 			}
+			return
 		}
 
 		// 获取到手机号
@@ -1109,32 +1086,7 @@ const confirmNickname = async () => {
 	const userId = userInfo.value.user_id || userInfo.value.id || userInfo.value.userId || userInfo.value.uid || storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
 	let mobile = userInfo.value.mobile || userInfo.value.phone || storedUserInfo.mobile || storedUserInfo.phone
 
-	// 后端 update-profile 必填 mobile，没有则用 user_id 拉取
-	if (!mobile && userId) {
-		try {
-			const mobileRes = await getMobileByUserId(userId, 'gm2025')
-			if (mobileRes) {
-				if (mobileRes.data && typeof mobileRes.data === 'object' && mobileRes.data.mobile) {
-					mobile = mobileRes.data.mobile
-				} else if (typeof mobileRes === 'string') {
-					mobile = mobileRes
-				} else if (mobileRes.mobile) {
-					mobile = mobileRes.mobile
-				} else if (mobileRes.data && typeof mobileRes.data === 'string') {
-					mobile = mobileRes.data
-				}
-				if (mobile) {
-					storedUserInfo.mobile = mobile
-					storedUserInfo.phone = mobile
-					userInfo.value.mobile = mobile
-					userInfo.value.phone = mobile
-					uni.setStorageSync('userInfo', storedUserInfo)
-				}
-			}
-		} catch (e) {
-			console.warn('[用户页面] 获取 mobile 失败:', e)
-		}
-	}
+	// 普通用户不再调用管理员接口 /user/mobile 反查手机号；本地没有 mobile 时走 userId 更新资料
 
 	uni.showLoading({ title: '更新中...', mask: true })
 	try {

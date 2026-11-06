@@ -93,7 +93,7 @@
 			<!-- 直推成员列表 -->
 			<view class="member-list-container">
 				<!-- 递归显示成员 -->
-				<template v-for="member in directMembers" :key="member.id || member.mobile">
+				<template v-for="member in directMembers" :key="member.id">
 					<MemberRecursiveItem
 						:member="member"
 						:depth="0"
@@ -412,35 +412,7 @@ const loadDirectMembers = async () => {
 			let name = member.name || member.mobile || '未设置昵称'
 			let member_level = member.member_level || 0
 			
-			if (member.mobile) {
-				try {
-					const userInfoRes = await getUserInfo(member.mobile)
-					const userDetail = userInfoRes.data || userInfoRes
-					
-					// 更新头像 - 优先使用 avatar_path，其次使用 avatar
-					if (userDetail && userDetail.avatar_path && userDetail.avatar_path !== 'null' && userDetail.avatar_path.trim() !== '') {
-						avatar_path = userDetail.avatar_path
-					} else if (userDetail && userDetail.avatar && userDetail.avatar !== 'null' && userDetail.avatar.trim() !== '') {
-						avatar_path = userDetail.avatar
-					}
-					
-					// 更新昵称（如果用户详情中有更完整的昵称）
-					if (userDetail && userDetail.name && userDetail.name !== member.mobile) {
-						name = userDetail.name
-					} else if (userDetail && userDetail.nickname) {
-						name = userDetail.nickname
-					}
-					
-					// 更新会员等级
-					if (userDetail && userDetail.member_level !== undefined) {
-						member_level = userDetail.member_level
-					}
-					
-					console.log('[直推成员] 获取头像成功:', member.mobile, avatar_path)
-				} catch (error) {
-					console.warn('[直推成员] 获取用户详情失败，使用默认数据:', member.mobile, error)
-				}
-			}
+			// 普通用户不能通过 GET /user/info 查询他人资料（后端已限制为本人），直接使用团队接口返回的成员字段
 			
 			return {
 				...member,
@@ -583,35 +555,7 @@ const loadTeamMembers = async (member) => {
 			let member_level = teamMember.member_level || 0
 			const memberMobile = teamMember.mobile || teamMember.phone
 			
-			if (memberMobile) {
-				try {
-					const userInfoRes = await getUserInfo(memberMobile)
-					const userDetail = userInfoRes.data || userInfoRes
-					
-					// 更新头像 - 优先使用 avatar_path，其次使用 avatar
-					if (userDetail && userDetail.avatar_path && userDetail.avatar_path !== 'null' && userDetail.avatar_path.trim() !== '') {
-						avatar_path = userDetail.avatar_path
-					} else if (userDetail && userDetail.avatar && userDetail.avatar !== 'null' && userDetail.avatar.trim() !== '') {
-						avatar_path = userDetail.avatar
-					}
-					
-					// 更新昵称（如果用户详情中有更完整的昵称）
-					if (userDetail && userDetail.name && userDetail.name !== memberMobile) {
-						name = userDetail.name
-					} else if (userDetail && userDetail.nickname) {
-						name = userDetail.nickname
-					}
-					
-					// 更新会员等级
-					if (userDetail && userDetail.member_level !== undefined) {
-						member_level = userDetail.member_level
-					}
-					
-					console.log('[团队成员] 获取头像成功:', memberMobile, avatar_path)
-				} catch (error) {
-					console.warn('[团队成员] 获取用户详情失败，使用默认数据:', memberMobile, error)
-				}
-			}
+			// 普通用户不能通过 GET /user/info 查询他人资料（后端已限制为本人），直接使用团队接口返回的成员字段
 			
 			return {
 				...teamMember,

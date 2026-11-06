@@ -355,30 +355,7 @@ const onProfileSetupConfirm = async () => {
 		// 确保本地有最新 userInfo（updateUserAvatar / updateUserName 会读 storage）
 		uni.setStorageSync('userInfo', userInfo)
 
-		// 如果没有 mobile，尝试通过 user_id 获取
-		if (!mobile && userId) {
-			try {
-				const mobileRes = await getMobileByUserId(userId, 'gm2025')
-				if (mobileRes) {
-					if (mobileRes.data && typeof mobileRes.data === 'object' && mobileRes.data.mobile) {
-						mobile = mobileRes.data.mobile
-					} else if (typeof mobileRes === 'string') {
-						mobile = mobileRes
-					} else if (mobileRes.mobile) {
-						mobile = mobileRes.mobile
-					} else if (mobileRes.data && typeof mobileRes.data === 'string') {
-						mobile = mobileRes.data
-					}
-					if (mobile) {
-						userInfo.mobile = mobile
-						userInfo.phone = mobile
-						uni.setStorageSync('userInfo', userInfo)
-					}
-				}
-			} catch (mobileError) {
-				console.warn('[完善资料] 获取 mobile 失败:', mobileError)
-			}
-		}
+		// 普通用户不再调用管理员接口 /user/mobile 反查手机号；本地没有 mobile 时走 userId 更新资料
 
 		if (avatarUrl) {
 			await updateUserAvatar(avatarUrl, mobile)
@@ -758,30 +735,21 @@ const onGetPhoneNumber = async (e) => {
 		uni.setStorageSync('userInfo', userInfo)
 		onUserLogin(userInfo)
 		
-		// 新版 get-phone 流程：手机号由后端用 phone_code 换取并写入 user，此处仅做兜底（若后端未返回 11 位手机号则用 getPhone 再取一次）
 		const uid = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
+		// 普通用户不再调用管理员接口 /user/mobile 反查手机号
 		let profileMobile = (userInfo.mobile || userInfo.phone || '').trim()
-		if (!profileMobile && uid) {
-			try {
-				const mb = await getMobileByUserId(uid, 'gm2025')
-				const m = (mb?.data && typeof mb.data === 'object' && mb.data.mobile) ? mb.data.mobile : (mb?.mobile ?? (typeof mb?.data === 'string' ? mb.data : ''))
-				profileMobile = (m && typeof m === 'string') ? String(m).trim() : ''
-			} catch (_) {}
-		}
 		if (/^\d{11}$/.test(profileMobile)) {
 			console.log('[手机号快捷登录] 用户手机号已为 11 位（get-phone 流程）')
 		} else if (uid && phoneCode) {
-			// 兜底：后端未返回手机号时，前端用 phone_code 调 get-phone 取手机号并更新（传 id 供后端关联用户）
+			// 兜底：后端未返回手机号时，前端用 phone_code 调 get-phone 取手机号（传 id 供后端关联用户）
 			try {
 				const getPhoneRes = await getPhone(phoneCode, uid)
 				const newMobile = (getPhoneRes && (getPhoneRes.phone || getPhoneRes.data?.phone)) ? String(getPhoneRes.phone || getPhoneRes.data.phone).trim() : ''
 				if (/^\d{11}$/.test(newMobile)) {
-					if (profileMobile) {
-						await updateMobile(uid, profileMobile, newMobile, 'gm2025')
-					}
-					userInfo.mobile = userInfo.phone = newMobile
+					// get-phone 只更新 phone 字段；登录手机号 mobile 需走专用改号流程
+					userInfo.phone = newMobile
 					uni.setStorageSync('userInfo', userInfo)
-					console.log('[手机号快捷登录] 兜底通过 get-phone 获取并更新手机号')
+					console.log('[手机号快捷登录] 兜底通过 get-phone 获取并更新 phone')
 				}
 			} catch (err) {
 				console.warn('[手机号快捷登录] get-phone 兜底失败:', err)

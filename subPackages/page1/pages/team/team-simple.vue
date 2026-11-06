@@ -81,7 +81,7 @@
 				<view v-if="directMembers && directMembers.length > 0">
 					<member-item-node 
 						v-for="(member, index) in directMembers" 
-						:key="member.id || member.mobile"
+						:key="member.id"
 						:member="member"
 						:depth="1"
 						@toggle-expand="toggleMember"

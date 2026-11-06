@@ -48,7 +48,7 @@
 		<template v-if="member.expanded && member.childrenLoaded && member.children && member.children.length > 0">
 			<MemberItemNode 
 				v-for="(child, index) in member.children" 
-				:key="`${child.id || child.mobile}-${index}`"
+				:key="child.id || index"
 				:member="child"
 				:depth="depth + 1"
 				@toggle-expand="$emit('toggle-expand', $event)"

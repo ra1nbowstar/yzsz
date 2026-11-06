@@ -10,7 +10,7 @@
 		<view class="member-list" v-if="memberList.length > 0">
 			<view 
 				v-for="(member, index) in memberList" 
-				:key="member.id || member.mobile || index"
+				:key="member.id || index"
 				class="member-item"
 			>
 				<view class="member-content" @tap="viewUserDetail(member)">

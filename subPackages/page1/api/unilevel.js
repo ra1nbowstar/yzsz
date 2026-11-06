@@ -40,7 +40,7 @@ export const getUnilevelDividendPreviewForUser = (user_id) => {
  */
 export const adjustUnilevelDividend = (amount_per_weight) => {
   const queryParams = []
-  queryParams.push(`admin_key=${encodeURIComponent('admin2025')}`)
+  // 管理员鉴权依赖 Bearer Token，不再传后台口令
   if (amount_per_weight !== undefined && amount_per_weight !== null) {
     queryParams.push(`amount_per_weight=${encodeURIComponent(amount_per_weight)}`)
   }

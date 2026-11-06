@@ -202,7 +202,6 @@ import { onUserLogout } from '@/utils/storage.js'
 import { getMyCoupons, pickMyCouponsTotal, countUnusedUnexpiredCoupons } from '@/api/coupon.js'
 import { getOrderList } from '@/api/order.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
-import { getMerchantData } from '../../utils/merchant.js'
 
 const userInfo = ref({
 	id: '',
@@ -397,38 +396,15 @@ const fetchMobileAndUpdateUserInfo = async () => {
 			return
 		}
 
-		console.log('[用户页面] 开始获取手机号，user_id:', userId)
-
-		// 使用 user_id 和 key 获取手机号
-		const res = await getMobileByUserId(userId, 'gm2025')
-		console.log('[用户页面] 获取手机号接口响应')
-
-		// 解析返回的手机号（兼容多种响应格式）
-		let mobile = null
-		if (res) {
-			if (typeof res === 'string') {
-				mobile = res
-			} else if (res.data) {
-				mobile = res.data.mobile || res.data.phone || res.data
-			} else if (res.mobile) {
-				mobile = res.mobile
-			} else if (res.phone) {
-				mobile = res.phone
-			}
-		}
-
+		// 普通用户只能使用本地登录信息中的手机号，不再调用管理员接口 /user/mobile
+		let mobile = storedUserInfo.mobile || storedUserInfo.phone
 		if (!mobile) {
-			console.log('[用户页面] 获取手机号失败')
-			// 如果获取手机号失败，尝试使用本地存储的手机号
-			mobile = storedUserInfo.mobile || storedUserInfo.phone
-			if (!mobile) {
-				console.log('[用户页面] 本地也没有手机号，跳过调用 user/info 接口')
-				// 如果没有手机号，至少显示本地存储的信息
-				if (storedUserInfo && Object.keys(storedUserInfo).length > 0) {
-					userInfo.value = storedUserInfo
-				}
-				return
+			console.log('[用户页面] 本地没有手机号，跳过调用 user/info 接口')
+			// 如果没有手机号，至少显示本地存储的信息
+			if (storedUserInfo && Object.keys(storedUserInfo).length > 0) {
+				userInfo.value = storedUserInfo
 			}
+			return
 		}
 
 		console.log('[用户页面] 获取到手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
@@ -1178,29 +1154,7 @@ onShow(async () => {
 
 			// 优先调用专用接口以确保商户身份判断准确（通过手机号查询）
 			try {
-				let mobileForCheck = merged.mobile || merged.phone || stored.mobile || stored.phone
-				// 如果仍然没有手机号，尝试通过 user_id 获取手机号
-				if (!mobileForCheck) {
-					const uid = merged.user_id || merged.id || merged.userId || stored.user_id || stored.id || stored.userId
-					if (uid) {
-						try {
-							const mobileRes = await getMobileByUserId(uid, 'gm2025')
-							if (mobileRes) {
-								if (mobileRes.data && typeof mobileRes.data === 'object' && mobileRes.data.mobile) {
-									mobileForCheck = mobileRes.data.mobile
-								} else if (typeof mobileRes === 'string') {
-									mobileForCheck = mobileRes
-								} else if (mobileRes.mobile) {
-									mobileForCheck = mobileRes.mobile
-								} else if (mobileRes.data && typeof mobileRes.data === 'string') {
-									mobileForCheck = mobileRes.data
-								}
-							}
-						} catch (merr) {
-							console.warn('[用户页面] 通过 user_id 获取手机号失败:', merr)
-						}
-					}
-				}
+				const mobileForCheck = merged.mobile || merged.phone || stored.mobile || stored.phone
 
 				if (mobileForCheck) {
 					const isMerchantFlag = await checkIsMerchant(mobileForCheck)

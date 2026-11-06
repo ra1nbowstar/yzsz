@@ -184,6 +184,32 @@ const loadMemberDetail = async (mobile) => {
 		return
 	}
 	
+	// 后端暂无「团队成员详情」接口；非本人不能调 /user/info（会 403），先降级展示
+	const storedUserInfo = uni.getStorageSync('userInfo') || {}
+	const selfMobile = storedUserInfo.mobile || storedUserInfo.phone
+	if (String(selfMobile) !== String(mobile)) {
+		member.value = {
+			id: mobile,
+			avatar: '/static/logo.png',
+			nickname: '',
+			level: 0,
+			unilevel: 0,
+			referrer: '无',
+			referrerData: null,
+			contribution: 0,
+			orderCount: 0,
+			teamCount: 0,
+			directCount: 0,
+			teamPerformance: 0,
+			activities: [],
+			mobile,
+			status: 0,
+			new_status: 0
+		}
+		uni.showToast({ title: '成员详情接口暂未开放', icon: 'none', duration: 2500 })
+		return
+	}
+	
 	try {
 		uni.showLoading({ title: '加载中...' })
 		
@@ -230,69 +256,10 @@ const loadMemberDetail = async (mobile) => {
 			avatarUrl = getAvatarUrl(userData.avatar)
 		}
 		
-		// 6. 处理推荐人数据（根据 /user/info 接口获取）
+		// 6. 推荐人信息：直接用 /user/info 返回的 referrer（后端已内嵌 mobile/name/member_level），
+		//    不再用推荐人手机号二次调 /user/info（普通用户会 403）
 		let referrerData = null
-		// 优先使用 referrer_mobile 或 referrerMobile 字段获取推荐人手机号
-		const referrerMobile = userData.referrer_mobile || userData.referrerMobile || userData.referrer?.mobile
-		if (referrerMobile) {
-			try {
-				console.log('[会员详情] 通过手机号调用 /user/info 接口获取推荐人信息:', String(referrerMobile).slice(0, 3) + '****' + String(referrerMobile).slice(-4))
-				const referrerInfoRes = await getUserInfo(referrerMobile)
-				const referrerInfo = referrerInfoRes.data || referrerInfoRes
-				console.log('[会员详情] 推荐人信息API返回')
-				
-				// 处理头像路径（可能是JSON字符串数组格式）
-				let avatarPath = referrerInfo.avatar_path || referrerInfo.avatar || ''
-				if (avatarPath && typeof avatarPath === 'string') {
-					// 尝试解析JSON字符串数组
-					if (avatarPath.trim().startsWith('[') && avatarPath.trim().endsWith(']')) {
-						try {
-							const parsed = JSON.parse(avatarPath)
-							if (Array.isArray(parsed) && parsed.length > 0) {
-								avatarPath = parsed[0]
-							}
-						} catch (e) {
-							console.warn('[会员详情] 推荐人头像JSON解析失败，使用原始字符串:', e)
-						}
-					}
-				}
-				
-				referrerData = {
-					mobile: referrerMobile,
-					name: referrerInfo.name || referrerInfo.nickname || '',
-					member_level: referrerInfo.member_level || referrerInfo.level || 0,
-					avatar_path: avatarPath,
-					avatar: avatarPath
-				}
-				console.log('[会员详情] 处理后的推荐人数据:', referrerData)
-			} catch (error) {
-				console.error('[会员详情] 获取推荐人信息失败:', error)
-				// 如果获取失败，尝试使用referrer对象中的数据
-				if (userData.referrer && typeof userData.referrer === 'object' && userData.referrer !== null) {
-					let fallbackAvatarPath = userData.referrer.avatar_path || userData.referrer.avatar || ''
-					// 处理JSON字符串数组格式
-					if (fallbackAvatarPath && typeof fallbackAvatarPath === 'string') {
-						if (fallbackAvatarPath.trim().startsWith('[') && fallbackAvatarPath.trim().endsWith(']')) {
-							try {
-								const parsed = JSON.parse(fallbackAvatarPath)
-								if (Array.isArray(parsed) && parsed.length > 0) {
-									fallbackAvatarPath = parsed[0]
-								}
-							} catch (e) {
-								console.warn('[会员详情] 推荐人头像JSON解析失败:', e)
-							}
-						}
-					}
-					referrerData = {
-						mobile: userData.referrer.mobile || referrerMobile || '',
-						name: userData.referrer.name || '',
-						member_level: userData.referrer.member_level || 0,
-						avatar_path: fallbackAvatarPath,
-						avatar: fallbackAvatarPath
-					}
-				}
-			}
-		} else if (userData.referrer && typeof userData.referrer === 'object' && userData.referrer !== null) {
+		if (userData.referrer && typeof userData.referrer === 'object' && userData.referrer !== null) {
 			// 如果没有手机号，但有referrer对象，直接使用
 			let fallbackAvatarPath = userData.referrer.avatar_path || userData.referrer.avatar || ''
 			// 处理JSON字符串数组格式

@@ -536,8 +536,7 @@ const setUnilevel = async () => {
 				try {
 					await setUnilevelApi({
 						user_id: userId,
-						level: newLevel,
-						admin_key: 'admin2025'
+						level: newLevel
 					})
 					
 					// 更新本地状态
@@ -593,8 +592,7 @@ const resetPassword = async () => {
 				try {
 					await adminResetPwd({
 						mobile: userInfo.value.mobile,
-						new_password: newPassword.value.trim(),
-						admin_key: 'admin2025'
+						new_password: newPassword.value.trim()
 					})
 					
 					// 清空密码输入
