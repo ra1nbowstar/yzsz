@@ -620,6 +620,19 @@ export const getReferTeam = (params = {}) => {
 }
 
 /**
+ * 团队成员详情（仅限当前登录用户团队树内的下级成员）
+ * GET /user/team/member/{id}
+ * @param {Number} id users.id（团队列表返回的 id，不是 uid、不是手机号）
+ * @returns {Promise} 直接返回对象 { id, name, avatar_path, member_level, layer, direct_count, team_total, referrer }
+ */
+export const getTeamMemberDetail = (id) => {
+  if (id === undefined || id === null || id === '') {
+    return Promise.reject(new Error('缺少成员ID'))
+  }
+  return request.get(`/user/team/member/${encodeURIComponent(id)}`)
+}
+
+/**
  * 根据用户ID获取手机号（管理员接口）——仅限管理员页面调用
  * 管理员鉴权依赖 Bearer Token，不再传后台口令
  * @param {Number} userId 用户ID

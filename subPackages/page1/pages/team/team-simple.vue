@@ -310,9 +310,9 @@ const toggleMember = async (member) => {
  * 查看用户详情
  */
 const viewUserDetail = (user) => {
-	if (!user || !user.mobile) return
+	if (!user || !user.id) return
 	uni.navigateTo({
-		url: `/subPackages/page2/pages/team/member-detail?mobile=${encodeURIComponent(user.mobile)}`
+		url: `/subPackages/page2/pages/team/member-detail?id=${encodeURIComponent(user.id)}`
 	})
 }
 

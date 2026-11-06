@@ -486,7 +486,7 @@ const viewMemberDetail = (member) => {
 		return
 	}
 	uni.navigateTo({ 
-		url: `/subPackages/page2/pages/team/member-detail?mobile=${encodeURIComponent(member.mobile)}` 
+		url: `/subPackages/page2/pages/team/member-detail?id=${encodeURIComponent(member.id)}` 
 	})
 }
 

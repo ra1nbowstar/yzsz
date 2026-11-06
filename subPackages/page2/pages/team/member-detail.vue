@@ -41,8 +41,8 @@
 						@error="handleAvatarError"
 					/>
 					<view class="referrer-info">
-						<text class="referrer-name">{{ member.referrerData.name || member.referrerData.mobile || '未设置昵称' }}</text>
-						<text class="referrer-mobile">{{ member.referrerData.mobile }}</text>
+						<text class="referrer-name">{{ member.referrerData.name || '未设置昵称' }}</text>
+						<text class="referrer-mobile" v-if="member.referrerData.mobile">{{ member.referrerData.mobile }}</text>
 					</view>
 					<view class="referrer-level-badge" :class="'level-' + (member.referrerData.member_level || 0)">
 						<text class="level-icon-small iconfont" :class="getLevelIcon(member.referrerData.member_level || 0)"></text>
@@ -96,7 +96,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { getUserInfo, getUniLevel, getReferDirect, getReferTeam } from '@/api/user.js'
+import { getUserInfo, getUniLevel, getReferDirect, getReferTeam, getTeamMemberDetail } from '@/api/user.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
 import { getLevelIcon, getLevelText } from '@/utils/level.js'
 
@@ -147,11 +147,11 @@ const handleAvatarError = () => {
  * 查看推荐人详情
  */
 const viewReferrerDetail = () => {
-	if (!member.value.referrerData || !member.value.referrerData.mobile) {
+	if (!member.value.referrerData || !member.value.referrerData.id) {
 		return
 	}
 	uni.navigateTo({
-		url: `/subPackages/page2/pages/team/member-detail?mobile=${encodeURIComponent(member.value.referrerData.mobile)}`
+		url: `/subPackages/page2/pages/team/member-detail?id=${encodeURIComponent(member.value.referrerData.id)}`
 	})
 }
 
@@ -315,16 +315,59 @@ const loadMemberDetail = async (mobile) => {
 }
 
 
+/**
+ * 加载团队成员详情（GET /user/team/member/{id}，id 为 users.id）
+ */
+const loadMemberDetailById = async (id) => {
+	try {
+		uni.showLoading({ title: '加载中...' })
+		const res = await getTeamMemberDetail(id)
+		// 后端确认：直接返回对象，外层无 data/rows 包装
+		const data = res && res.data ? res.data : (res || {})
+		const refData = data.referrer && typeof data.referrer === 'object' ? data.referrer : null
+
+		member.value = {
+			id: data.id || id,
+			avatar: data.avatar_path ? getAvatarUrl(data.avatar_path) : '/static/logo.png',
+			nickname: data.name || '未设置昵称',
+			level: Number(data.member_level) || 0,
+			unilevel: 0, // 该接口不返回联创等级
+			referrer: refData ? (refData.name || refData.id || '无') : '无',
+			referrerData: refData ? {
+				id: refData.id,
+				mobile: '',
+				name: refData.name || '',
+				member_level: Number(refData.member_level) || 0,
+				avatar_path: refData.avatar_path || '',
+				avatar: refData.avatar_path || ''
+			} : null,
+			contribution: 0,
+			orderCount: 0,
+			teamCount: Number(data.team_total) || 0,
+			directCount: Number(data.direct_count) || 0,
+			teamPerformance: 0,
+			activities: [],
+			mobile: '',
+			status: 0,
+			new_status: 0,
+			layer: Number(data.layer) || 0
+		}
+		console.log('[会员详情] 加载完成:', member.value)
+	} catch (error) {
+		console.error('[会员详情] 加载失败:', error)
+		// 403 已由 request 层统一提示（TEAM_MEMBER_ACCESS_DENIED）
+	} finally {
+		uni.hideLoading()
+	}
+}
+
 onLoad(async (options) => {
-	// 优先使用 mobile，如果没有则使用 id
-	const mobile = options.mobile || options.id
-	if (!mobile) {
-		uni.showToast({ title: '缺少参数', icon: 'none' })
+	const memberId = options.id
+	if (!memberId) {
+		uni.showToast({ title: '缺少成员ID，请从团队列表进入', icon: 'none' })
 		return
 	}
-	
-	// 调用API获取会员详情
-	await loadMemberDetail(mobile)
+	await loadMemberDetailById(memberId)
 })
 </script>
 

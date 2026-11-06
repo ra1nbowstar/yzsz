@@ -198,17 +198,21 @@ class Request {
             // 404错误不显示提示，直接reject（由调用方决定是否静默处理）
             reject({ code: 404, statusCode: 404, message: '接口不存在' })
           } else if (res.statusCode === 403) {
-            // 无权限：暂无稳定业务码，临时按后端 detail 区分两类 403
+            // 权限不足：优先按后端稳定业务码 code 判断，detail 兜底
+            const bizCode = responseData.code || ''
             const rawMsg = responseData.detail || responseData.message || responseData.msg || ''
             const errorMsg = typeof rawMsg === 'string' ? rawMsg : (Array.isArray(rawMsg) && rawMsg.length ? String(rawMsg[0]) : '')
             let tip = '当前账号无管理员权限'
-            if (errorMsg === '只能查询本人信息') {
+            if (bizCode === 'SELF_RESOURCE_ONLY' || errorMsg === '只能查询本人信息') {
               tip = '无权查看其他用户资料'
-            } else if (errorMsg === '需要平台管理员权限' || errorMsg.indexOf('管理员') >= 0) {
+            } else if (bizCode === 'TEAM_MEMBER_ACCESS_DENIED' || errorMsg.indexOf('团队成员') >= 0) {
+              tip = '无权查看该团队成员'
+            } else if (bizCode === 'PLATFORM_ADMIN_REQUIRED' || errorMsg.indexOf('管理员') >= 0) {
               tip = '当前账号无管理员权限'
             }
             this.handleError(tip)
-            reject({ code: 403, statusCode: 403, message: errorMsg || tip, detail: responseData.detail, ...responseData })
+            // 错误体顶层可能带 code，先展开再覆盖，避免它把 HTTP 语义的 403 挡掉
+            reject({ ...responseData, code: 403, statusCode: 403, message: errorMsg || tip, detail: responseData.detail, bizCode })
           } else if (res.statusCode === 409) {
             // 状态/幂等/库存冲突：提示冲突，由调用方刷新后重试，不盲重试写操作
             const rawMsg = responseData.detail || responseData.message || responseData.msg || '操作冲突，请刷新后重试'

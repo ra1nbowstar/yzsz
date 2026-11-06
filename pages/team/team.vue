@@ -600,9 +600,9 @@ const viewUserDetail = (user) => {
 	if (!checkLogin()) {
 		return
 	}
-	if (!user || !user.mobile) return
+	if (!user || !user.id) return
 	uni.navigateTo({
-		url: `/subPackages/page2/pages/team/member-detail?mobile=${encodeURIComponent(user.mobile)}`
+		url: `/subPackages/page2/pages/team/member-detail?id=${encodeURIComponent(user.id)}`
 	})
 }
 
