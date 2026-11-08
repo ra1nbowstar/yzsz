@@ -117,7 +117,7 @@ import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getReferDirect, getReferTeam, getUniLevel, refreshUserInfo, getUserInfo } from '@/api/user.js'
 import { getUniLevelStatus, promoteUniLevel } from '@/api/team.js'
-import { getPointsSummary } from '@/api/points.js'
+import { getAssets } from '@/api/assets.js'
 import { getLevelIcon, getLevelText, getUserLevelInfo } from '@/utils/level.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
 import MemberRecursiveItem from '@/components/member-recursive-item.vue'
@@ -239,39 +239,12 @@ const goToPointsLog = () => {
  */
 const loadRewardStats = async () => {
 	try {
-		const storedUserInfo = uni.getStorageSync('userInfo') || {}
-		const userId = storedUserInfo.id || storedUserInfo.user_id
-		
-		if (!userId) {
-			rewardStats.value.totalReward = 0
-			remainingPoints.value = 0
-			return
-		}
-		
-		// 调用点数汇总接口
-		const res = await getPointsSummary(userId)
-		const summary = res.data || res || {}
-		
-		// 累计雨点：cumulative_total
-		if (summary.cumulative_total !== undefined) {
-			rewardStats.value.totalReward = parseFloat(summary.cumulative_total || 0)
-		} else {
-			rewardStats.value.totalReward = 0
-		}
-		
-		// 剩余雨点：remaining_points
-		if (summary.remaining_points !== undefined) {
-			remainingPoints.value = parseFloat(summary.remaining_points || 0)
-		} else if (summary.true_total_points !== undefined) {
-			// 兼容可能的字段名
-			remainingPoints.value = parseFloat(summary.true_total_points || 0)
-		} else {
-			remainingPoints.value = 0
-		}
-		
-		// 积分汇总加载成功
+		// 统一走资产适配层；团队页只用雨点，避免多余请求
+		const assets = await getAssets({ need: ['rain'] })
+		rewardStats.value.totalReward = assets.cumulativeRain === null ? 0 : assets.cumulativeRain
+		remainingPoints.value = assets.rain === null ? 0 : assets.rain
 	} catch (error) {
-		console.error('[团队页面] 加载积分汇总失败:', error)
+		console.error('[团队页面] 加载雨点失败:', error)
 		rewardStats.value.totalReward = 0
 		remainingPoints.value = 0
 	}

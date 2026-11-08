@@ -30,8 +30,8 @@
 					<text class="egg-main-label">实时咯哒值</text>
 				</view>
 				<view class="egg-main-item">
-					<text class="egg-main-value">¥{{ eggData.currentValue }}</text>
-					<text class="egg-main-label">当前权益价值</text>
+					<text class="egg-main-value">{{ eggData.currentValue }}</text>
+					<text class="egg-main-label">当前权益计量值</text>
 				</view>
 			</view>
 
@@ -42,11 +42,11 @@
 				</view>
 				<view class="egg-progress-labels">
 					<text>增值进度 {{ progressPercent }}%</text>
-					<text>达到 100% 自动转咯哒券</text>
+					<text>达到 {{ thresholdPercent }}% 自动转咯哒券</text>
 				</view>
 			</view>
 			<view class="egg-progress-pending" v-else>
-				<text>增值进度：暂不可计算（规则待确认）</text>
+				<text>增值进度：暂不可计算</text>
 			</view>
 
 			<view class="egg-action-btn" @tap="goExchangeCouponToEgg">
@@ -58,7 +58,7 @@
 		<view class="rights-section">
 			<view class="rights-section-head">
 				<text class="rights-section-title">咯哒券</text>
-				<text class="rights-section-tag">可兑坛装白酒</text>
+				<text class="rights-section-tag" v-if="showWineTag">可兑坛装白酒</text>
 			</view>
 			<view class="rights-row">
 				<text class="rights-row-label">持有数量</text>
@@ -72,7 +72,7 @@
 				<text class="goda-record-delta">{{ r.delta }}</text>
 			</view>
 			<view class="list-empty" v-if="godaCouponRecords.length === 0">
-				<text>暂无使用记录</text>
+				<text>功能即将开放</text>
 			</view>
 		</view>
 
@@ -91,12 +91,16 @@
 					<text class="ledger-item-delta" :class="item.delta > 0 ? 'up' : 'down'">
 						{{ item.delta > 0 ? '+' : '' }}{{ item.delta }} {{ item.assetLabel }}
 					</text>
-					<text class="ledger-item-balance">余额 {{ item.balanceAfter }}</text>
+					<text class="ledger-item-balance">计量值 {{ item.balanceAfter }}</text>
 				</view>
 			</view>
 			<view class="list-empty" v-if="recentLedger.length === 0">
-				<text>暂无流水</text>
+				<text>功能即将开放</text>
 			</view>
+		</view>
+		<!-- 合规声明（后端 disclaimer） -->
+		<view class="rights-disclaimer" v-if="disclaimer">
+			<text>{{ disclaimer }}</text>
 		</view>
 	</scroll-view>
 </template>
@@ -104,23 +108,25 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import { getAssets, formatQty, hasToken } from '@/api/assets.js'
 
-// ===== 占位数据（后端接口未提供，暂全部置 0 / 空，接入后替换） =====
-
+// null = 未取到（未登录/加载中/失败），展示为 --；0 才是真实零
 const rights = ref({
-	points: 0,     // 积分
-	rain: 0,       // 雨点
-	coupons: 0,    // 普通优惠券
-	kadaEgg: 0,    // 咯哒蛋
-	kadaCoupon: 0  // 咯哒券
+	points: null,      // 积分
+	rain: null,        // 剩余雨点
+	coupons: null,     // 可用券张数
+	kadaEgg: null,     // 咯哒蛋
+	kadaCoupon: null   // 咯哒券
 })
 
+const showQty = (v) => (v === null || v === undefined ? '--' : formatQty(v))
+
 const assetList = computed(() => [
-	{ label: '积分', value: rights.value.points },
-	{ label: '雨点', value: rights.value.rain },
-	{ label: '优惠券', value: rights.value.coupons, route: '/subPackages/page2/pages/user/coupons' },
-	{ label: '咯哒蛋', value: rights.value.kadaEgg },
-	{ label: '咯哒券', value: rights.value.kadaCoupon }
+	{ label: '积分', value: showQty(rights.value.points), route: '/subPackages/page2/pages/points/balance' },
+	{ label: '剩余雨点', value: showQty(rights.value.rain), route: '/subPackages/page2/pages/points/log?type=rain' },
+	{ label: '优惠券', value: showQty(rights.value.coupons), route: '/subPackages/page2/pages/user/coupons' },
+	{ label: '咯哒蛋', value: showQty(rights.value.kadaEgg) },
+	{ label: '咯哒券', value: showQty(rights.value.kadaCoupon) }
 ])
 
 // 点击资产卡片：带 route 的跳转对应页面（当前仅「优惠券」→ 我的优惠券）
@@ -131,10 +137,24 @@ const onAssetTap = (item) => {
 
 // 咯哒蛋
 const eggData = ref({
-	quantity: 0,            // 持有数量
-	currentUnitValue: 0,    // 实时咯哒值
-	currentValue: '0.00',   // 当前权益价值（元）
-	growthRatio: null       // 增值比例（null 表示规则未确认，不可计算）
+	quantity: '--',         // 持有数量
+	currentUnitValue: '--', // 实时咯哒值
+	currentValue: '--',     // 当前权益计量值（不是可提现金额）
+	growthRatio: null,      // 增值比例（null 表示规则未确认，不可计算）
+	conversionThreshold: 1  // 转券触发线（后端 conversion_threshold_ratio）
+})
+
+// 合规声明（后端 disclaimer，不用前端自拟措辞）
+const disclaimer = ref('')
+
+// 能力声明（后端 capabilities，控制白酒等入口显隐）
+const capabilities = ref(null)
+
+// 白酒标签：优先用后端 capabilities.can_list_wine；缺省时按咯哒券数量兜底
+const showWineTag = computed(() => {
+	const cap = capabilities.value
+	if (cap && cap.can_list_wine !== undefined) return !!cap.can_list_wine
+	return Number(rights.value.kadaCoupon) > 0
 })
 
 // 增值进度（0-100）；growthRatio 为 null 时返回 null，不按 0% 呈现
@@ -143,6 +163,12 @@ const progressPercent = computed(() => {
 	if (r === null || r === undefined) return null
 	const p = Math.round(Number(r) * 100)
 	return Math.max(0, Math.min(p, 100))
+})
+
+// 触发线百分比（后端 conversion_threshold_ratio，默认 1.0）
+const thresholdPercent = computed(() => {
+	const t = Number(eggData.value.conversionThreshold)
+	return Number.isFinite(t) ? Math.round(t * 100) : 100
 })
 
 // 咯哒券
@@ -154,20 +180,45 @@ const godaCouponRecords = ref([])
 const recentLedger = ref([])
 
 /**
- * 加载权益数据
- * 后端接口未提供，暂用 mock；就绪后替换为 GET /api/v1/rights/me + /rights/ledger
+ * 加载权益数据：统一走 api/assets.js 适配层（页面不直接调接口）。
+ * 过渡态：points/rain/coupons 由适配层临时取旧接口；蛋/券/规则字段取 /rights/me。
+ * 任一区块失败只影响自己（值为 null → 显示 --），不影响其它区块。
  */
 const loadRightsData = async () => {
+	if (!hasToken()) {
+		rights.value = { points: null, rain: null, coupons: null, kadaEgg: null, kadaCoupon: null }
+		eggData.value.quantity = '--'
+		eggData.value.currentUnitValue = '--'
+		eggData.value.currentValue = '--'
+		eggData.value.growthRatio = null
+		disclaimer.value = ''
+		return
+	}
 	try {
-		// TODO: 接入后端接口后替换 mock
-		// const res = await getRightsOverview()
-		// rights.value = {...}
-		// eggData.value = {...}
-		// godaCouponData.value = {...}
-		// godaCouponRecords.value = [...]
-		// recentLedger.value = [...]
+		const assets = await getAssets()
+		rights.value.points = assets.points
+		rights.value.rain = assets.rain
+		rights.value.coupons = assets.coupons
+		rights.value.kadaEgg = assets.kadaEgg
+		rights.value.kadaCoupon = assets.kadaCoupon
+
+		if (assets.eggs) {
+			eggData.value.quantity = formatQty(assets.eggs.quantity)
+			eggData.value.currentUnitValue = formatQty(assets.eggs.currentUnitValue)
+			eggData.value.currentValue = formatQty(assets.eggs.currentValue)
+			eggData.value.growthRatio = assets.eggs.growthRatio
+			eggData.value.conversionThreshold = assets.eggs.conversionThreshold || 1
+		} else {
+			eggData.value.quantity = '--'
+			eggData.value.currentUnitValue = '--'
+			eggData.value.currentValue = '--'
+			eggData.value.growthRatio = null
+		}
+		godaCouponData.value.balance = assets.kadaCoupon === null ? '--' : formatQty(assets.kadaCoupon)
+		disclaimer.value = assets.disclaimer || ''
+		capabilities.value = assets.capabilities || null
 	} catch (error) {
-		console.error('加载权益中心数据失败', error)
+		console.warn('[权益中心] 资产加载失败', error)
 	}
 }
 
@@ -484,5 +535,19 @@ onShow(() => {
 .list-empty text {
 	font-size: 24rpx;
 	color: #999;
+}
+
+/* 合规声明 */
+.rights-disclaimer {
+	margin: 20rpx 30rpx 40rpx;
+	padding: 20rpx 24rpx;
+	background: #f8f9fa;
+	border-radius: 12rpx;
+}
+
+.rights-disclaimer text {
+	font-size: 22rpx;
+	color: #999;
+	line-height: 1.6;
 }
 </style>

@@ -518,6 +518,11 @@ const getTimeAgo = (timestamp) => {
  * 加载公益播报（实时更新）
  */
 const loadCharityNotices = async () => {
+	// 游客不请求公益接口，避免 401；只展示静态文案
+	if (!uni.getStorageSync('token')) {
+		charityNotices.value = ['您的每一笔订单都在为公益事业贡献力量']
+		return
+	}
 	try {
 		console.log('[首页] 开始实时加载公益播报')
 		

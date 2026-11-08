@@ -1158,11 +1158,11 @@ onShow(async () => {
 
 				if (mobileForCheck) {
 					const isMerchantFlag = await checkIsMerchant(mobileForCheck)
-					// 将返回的布尔值合并到本地数据，兼容多种字段名
-					merged.is_merchant = isMerchantFlag
-					merged.isMerchant = isMerchantFlag
-					merged.is_platform = isMerchantFlag
-					merged.isPlatform = isMerchantFlag
+					// 布尔接口只做兜底：详情接口没给 1/2 时才填，绝不覆盖权威值
+					if (!merged.is_merchant && !merged.isMerchant) {
+						merged.is_merchant = isMerchantFlag ? 1 : 0
+						merged.isMerchant = isMerchantFlag ? 1 : 0
+					}
 					console.log('[用户页面] checkIsMerchant 返回:', isMerchantFlag, 'mobile:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))
 				}
 			} catch (e) {

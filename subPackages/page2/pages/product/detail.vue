@@ -667,15 +667,8 @@ const toggleFavorite = () => {
 	try {
 		const productData = product.value
 		
-		// 检查是否已登录
-		const userInfo = uni.getStorageSync('userInfo') || {}
-		if (!userInfo.id && !userInfo.user_id && !userInfo.userId) {
-			uni.showToast({ 
-				title: '请先登录', 
-				icon: 'none' 
-			})
-			return
-		}
+		// 未登录：弹窗让用户自主选择是否登录
+		if (!requireLogin('收藏')) return
 		
 		if (isFavorite.value) {
 			// 取消收藏
@@ -917,35 +910,35 @@ const contactService = () => {
 }
 
 /**
- * 检查登录状态
+ * 需要登录的操作：未登录时弹窗让用户自主选择是否登录（不再自动跳转）
+ * @param {String} actionText 操作名，如「购买」「加入购物车」「收藏」
+ * @returns {Boolean} 已登录返回 true
  */
-const checkLogin = () => {
-	const token = uni.getStorageSync('token')
-	const userInfo = uni.getStorageSync('userInfo') || {}
-	const userId = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
-	const mobile = userInfo.mobile || userInfo.phone
-	const isLoggedIn = !!(token && (userId || (mobile && /^\d{11}$/.test(mobile))))
-	
-	if (!isLoggedIn) {
-		uni.showToast({
-			title: '请先登录',
-			icon: 'none'
-		})
-		setTimeout(() => {
-			uni.navigateTo({
-				url: '/pages/index/index'
+const requireLogin = (actionText = '继续操作') => {
+	const u = uni.getStorageSync('userInfo') || {}
+	if (uni.getStorageSync('token') && (u.id || u.user_id)) return true
+	uni.showModal({
+		title: '需要登录',
+		content: `${actionText}需要登录，是否前往登录？`,
+		confirmText: '去登录',
+		cancelText: '再看看',
+		success: (res) => {
+			if (!res.confirm) return
+			uni.setStorageSync('postLoginRedirect', {
+				url: `/subPackages/page2/pages/product/detail?id=${product.value.id || productId.value}`,
+				createdAt: Date.now()
 			})
-		}, 500)
-		return false
-	}
-	return true
+			uni.navigateTo({ url: '/pages/index/index' })
+		}
+	})
+	return false
 }
 
 /**
  * 跳转购物车
  */
 const goToCart = () => {
-	if (!checkLogin()) {
+	if (!requireLogin('查看购物车')) {
 		return
 	}
 	uni.navigateTo({ url: '/subPackages/page2/pages/cart/cart' })
@@ -955,6 +948,9 @@ const goToCart = () => {
  * 加入购物车
  */
 const addToCart = async () => {
+	// 未登录：弹窗让用户自主选择是否登录
+	if (!requireLogin('加入购物车')) return
+
 	// 防止重复点击
 	if (isAddingToCart.value) {
 		console.log('[加入购物车] 正在处理中，忽略重复点击')
@@ -983,7 +979,6 @@ const addToCart = async () => {
 		const userId = userInfo.id || userInfo.user_id
 		
 		if (!userId) {
-			uni.showToast({ title: '请先登录', icon: 'none' })
 			isAddingToCart.value = false
 			return
 		}
@@ -1135,18 +1130,9 @@ const addToCart = async () => {
 /**
  * 立即购买
  */
-/**
- * 立即购买
- */
 const buyNow = async () => {
-	// 1. 基础验证
-	const userInfo = uni.getStorageSync('userInfo') || {}
-	const userId = userInfo.id || userInfo.user_id
-	
-	if (!userId) {
-		uni.showToast({ title: '请先登录', icon: 'none' })
-		return
-	}
+	// 1. 基础验证：未登录时弹窗让用户自主选择是否登录
+	if (!requireLogin('购买')) return
 	
 	// 检查库存
 	if (!product.value.stock || product.value.stock <= 0) {
@@ -1181,15 +1167,6 @@ const buyNow = async () => {
 	
 	// 3. 直接跳转到订单确认页面，不加入购物车
 	try {
-		// 获取用户ID
-		const userInfo = uni.getStorageSync('userInfo') || {}
-		const userId = userInfo.id || userInfo.user_id
-		
-		if (!userId) {
-			uni.showToast({ title: '请先登录', icon: 'none' })
-			return
-		}
-		
 		// 确保数量是整数（从当前值获取，确保是最新的）
 		const finalQuantity = Math.max(1, parseInt(quantity.value) || 1)
 		console.log('[立即购买] 当前数量值:', quantity.value, '类型:', typeof quantity.value, '最终数量:', finalQuantity)

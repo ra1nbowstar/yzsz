@@ -2,12 +2,13 @@
 	<scroll-view class="exchange-page" :scroll-y="true">
 		<view class="exchange-header">
 			<text class="exchange-title">权益兑换中心</text>
-			<text class="exchange-sub">券兑咯哒蛋 · 券兑农场实物 · 转化记录</text>
+			<text class="exchange-sub">券兑咯哒蛋 · 转化记录</text>
 		</view>
 
 		<view class="exchange-tabs">
 			<view class="exchange-tab" :class="{ active: activeTab === 'egg' }" @tap="activeTab = 'egg'">券兑咯哒蛋</view>
-			<view class="exchange-tab" :class="{ active: activeTab === 'farm' }" @tap="activeTab = 'farm'">券兑农场实物</view>
+			<!-- 暂时隐藏券兑农场实物,保留代码 -->
+			<view v-if="false" class="exchange-tab" :class="{ active: activeTab === 'farm' }" @tap="activeTab = 'farm'">券兑农场实物</view>
 			<view class="exchange-tab" :class="{ active: activeTab === 'records' }" @tap="activeTab = 'records'">转化记录</view>
 		</view>
 
@@ -46,8 +47,8 @@
 			</view>
 		</view>
 
-		<!-- 券兑农场实物 -->
-		<view v-if="activeTab === 'farm'">
+		<!-- 券兑农场实物（暂时隐藏,保留代码） -->
+		<view v-if="false">
 			<view class="panel">
 				<text class="panel-tip">通道一：消耗优惠券直接兑换农场实物，不进入咯哒蛋体系、不产生积分。</text>
 			</view>
@@ -83,6 +84,8 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { getRightsOverview, exchangeCouponsForEggs } from '@/api/rights.js'
 
 const activeTab = ref('egg')
 
@@ -103,12 +106,72 @@ const farmProducts = ref([])
 
 const conversionRecords = ref([])
 
-const doExchangeEgg = () => {
-	uni.showToast({ title: '敬请期待', icon: 'none' })
+/** 数量为十进制字符串，展示时截断到 6 位再去尾零 */
+const formatQty = (v) => {
+	const n = Number(v)
+	if (!Number.isFinite(n)) return '0'
+	return String(Number(n.toFixed(6)))
+}
+
+/** 拉取本人权益（可用券 + 实时咯哒值） */
+const loadRights = async () => {
+	if (!uni.getStorageSync('token')) return
+	try {
+		const res = await getRightsOverview()
+		const d = (res && res.data) || res || {}
+		couponBalance.value = formatQty(d.coupons && d.coupons.balance)
+		unitValue.value = formatQty(d.eggs && d.eggs.current_unit_value)
+	} catch (e) {
+		console.warn('[兑换中心] 权益数据加载失败', e)
+	}
+}
+
+onShow(() => {
+	loadRights()
+})
+
+// 幂等键：网络失败重试复用同一 key；兑换成功或 409 改价后清空，下次用新 key
+let pendingKey = ''
+
+/** 券兑咯哒蛋：POST /api/v1/rights/egg-exchanges（Idempotency-Key + expected_unit_value） */
+const doExchangeEgg = async () => {
+	const n = Number(couponInput.value)
+	if (!Number.isFinite(n) || n <= 0) {
+		uni.showToast({ title: '请输入有效的券数量', icon: 'none' })
+		return
+	}
+	// 除零保护：实时咯哒值为 0/不可用时不做除法、不提交
+	const v = Number(unitValue.value)
+	if (!Number.isFinite(v) || v <= 0) {
+		uni.showToast({ title: '暂不可计算', icon: 'none' })
+		return
+	}
+	if (!pendingKey) {
+		pendingKey = `egg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+	}
+	uni.showLoading({ title: '兑换中...', mask: true })
+	try {
+		await exchangeCouponsForEggs({ coupon_quantity: n, expected_unit_value: v }, pendingKey)
+		pendingKey = ''
+		uni.hideLoading()
+		uni.showToast({ title: '兑换成功', icon: 'success' })
+		couponInput.value = ''
+		await loadRights()
+	} catch (e) {
+		uni.hideLoading()
+		const code = e && (e.code || e.statusCode)
+		if (code === 409) {
+			// 并发改价：换新 key，刷新实时咯哒值，并明确提示用户重新确认
+			pendingKey = ''
+			await loadRights()
+			uni.showToast({ title: '咯哒值已变化，请确认新的兑换结果', icon: 'none', duration: 3000 })
+		}
+		// 其它失败（网络等）：保留 pendingKey，重试时复用
+	}
 }
 
 const doExchangeFarm = () => {
-	uni.showToast({ title: '敬请期待', icon: 'none' })
+	uni.showToast({ title: '农场兑换接口暂未开放', icon: 'none' })
 }
 </script>
 

@@ -26,15 +26,20 @@
               <text class="amount-sign">{{ getAmountSign(item) }}</text>
               <text class="amount-value">{{ formatAmount(item) }}</text>
             </view>
-            <text class="source-tag" v-if="item.flow_type || item.points_type || item.type">
-              {{ formatFlowType(item.flow_type) || item.points_type || item.type }}
+            <text class="source-tag" v-if="formatSourceTag(item)">
+              {{ formatSourceTag(item) }}
             </text>
           </view>
         </view>
         
-        <view v-if="pointsLog.length === 0 && !loading" class="empty-state">
+        <view v-if="loadError && pointsLog.length === 0 && !loading" class="empty-state">
+          <text class="empty-icon">⚠️</text>
+          <text class="empty-text">{{ loadError }}</text>
+        </view>
+
+        <view v-if="!loadError && pointsLog.length === 0 && !loading" class="empty-state">
           <text class="empty-icon">📝</text>
-          <text class="empty-text">暂无雨点流水记录</text>
+          <text class="empty-text">{{ flowType === 'rain' ? '暂无雨点流水记录' : '暂无流水记录' }}</text>
         </view>
         
         <view v-if="loading" class="loading-state">
@@ -58,9 +63,11 @@ const pointsLog = ref([])
 const loading = ref(false)
 const refreshing = ref(false)
 const page = ref(1)
-const pageSize = ref(30)
+const pageSize = ref(20)
 const hasMore = ref(true)
 const total = ref(0)
+const flowType = ref('all')   // 入口类型：'rain' 走本人 /points/log；其它保持原数据源
+const loadError = ref('')     // 403/异常时的明确文案，避免列表空白
 
 /**
  * 格式化流水类型显示
@@ -81,6 +88,13 @@ const formatFlowType = (flowType) => {
     '优惠券扣减': '优惠券扣减'
   }
   return typeMap[flowType] || flowType
+}
+
+const formatSourceTag = (item) => {
+  const raw = item.flow_type || item.points_type || item.type || ''
+  if (raw === 'rain' || raw === 'rainpoint') return '雨点'
+  if (raw === 'member') return '积分'
+  return formatFlowType(raw) || ''
 }
 
 /**
@@ -144,6 +158,7 @@ const loadPointsLog = async (isMore = false) => {
     if (!isMore) {
       page.value = 1
       pointsLog.value = []
+      loadError.value = ''
     }
     
     // 获取当前用户ID
@@ -220,7 +235,12 @@ const loadPointsLog = async (isMore = false) => {
     
   } catch (error) {
     console.error('[雨点流水] 加载失败:', error)
-    uni.showToast({ title: '加载失败: ' + (error.message || '未知错误'), icon: 'none' })
+    loadError.value = (error && error.code === 403) ? '暂无权限查看该流水' : '流水加载失败，请稍后重试'
+    // 轻量埋点（无第三方统计时用 console 打点）
+    console.warn('[埋点][雨点流水加载失败]', { type: flowType.value, code: error && error.code, msg: error && (error.message || error.msg) })
+    if (!pointsLog.value.length) {
+      uni.showToast({ title: loadError.value, icon: 'none' })
+    }
   } finally {
     loading.value = false
   }
@@ -245,9 +265,9 @@ const loadMore = () => {
 }
 
 onLoad((options) => {
-  // 设置页面标题
+  // 权益中心雨点入口带 type=rain；团队页不传或传 all，保持原数据源
+  flowType.value = (options && options.type) || 'all'
   uni.setNavigationBarTitle({ title: '雨点流水' })
-  // 加载数据
   loadPointsLog()
 })
 

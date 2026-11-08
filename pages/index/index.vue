@@ -210,7 +210,7 @@ const checkAndFillPendingReferrer = () => {
 const goToAppHome = () => {
 	const redirectUrl = consumePostLoginRedirect()
 	if (redirectUrl) {
-		uni.showToast({ title: '登录成功，返回扫码页', icon: 'none', duration: 1200 })
+		uni.showToast({ title: '登录成功，正在返回', icon: 'none', duration: 1200 })
 		setTimeout(() => {
 			uni.reLaunch({ url: redirectUrl })
 		}, 350)
@@ -275,14 +275,25 @@ const goToAppHome = () => {
 				hasAvatar: hasAvatar
 			})
 			
-			// 如果已有头像，直接返回，不弹出提示
-			if (hasAvatar) {
-				console.log('[首次登录检查] 用户已有头像，跳过提示')
+			// 判断昵称是否有效：排除空、null、undefined、默认占位
+			const nameStr = String(mergedUserInfo.name || '').trim()
+			const hasNickname = nameStr && nameStr !== 'null' && nameStr !== 'undefined' && nameStr !== '微信用户'
+
+			// 头像与昵称都为空时才引导；有一项就跳过（放宽判定）
+			if (hasAvatar || hasNickname) {
+				console.log('[首次登录检查] 已有头像或昵称，跳过提示')
+				return false
+			}
+
+			// 本次安装已提示过就不再打扰（本地标记，退出登录时清除）
+			if (uni.getStorageSync('profileSetupPrompted')) {
+				console.log('[首次登录检查] 本次安装已提示过完善资料，跳过')
 				return false
 			}
 		
-		// 是首次登录，弹出提示
+		// 是首次登录，弹出提示（弹出即视为已提示，跳过也算）
 		return new Promise((resolve) => {
+			uni.setStorageSync('profileSetupPrompted', true)
 			uni.showModal({
 				title: '完善资料',
 				content: '是否使用微信头像和昵称？',
@@ -294,7 +305,7 @@ const goToAppHome = () => {
 						console.log('[首次登录] 用户选择使用微信头像和昵称，展示完善资料浮层')
 						profileSetupUserInfo.value = userInfo
 						profileSetupAvatarUrl.value = ''
-						profileSetupNickname.value = userInfo.name || '微信用户'
+						profileSetupNickname.value = userInfo.name || ''
 						showProfileSetup.value = true
 						resolve(true)
 						return
@@ -346,7 +357,7 @@ const onProfileSetupConfirm = async () => {
 		return
 	}
 	const avatarUrl = profileSetupAvatarUrl.value
-	const nickName = (profileSetupNickname.value || '').trim() || '微信用户'
+	const nickName = (profileSetupNickname.value || '').trim()
 	const userId = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
 	let mobile = userInfo.mobile || userInfo.phone
 
@@ -374,7 +385,7 @@ const onProfileSetupConfirm = async () => {
 		}
 
 		await refreshUserInfo()
-		if (avatarUrl || (nickName && nickName !== '微信用户')) {
+		if (avatarUrl || nickName) {
 			uni.showToast({ title: '已更新', icon: 'success', duration: 1200 })
 		}
 	} catch (err) {
@@ -480,14 +491,20 @@ const handleLogin = async () => {
 			const mobile = userInfo.mobile || phone.value
 			if (mobile) {
 				const isMerchant = await checkIsMerchant(mobile)
-				userInfo.is_merchant = isMerchant
-				userInfo.isMerchant = isMerchant
+				// 布尔接口只做兜底：详情接口没给 1/2 时才填
+				if (!userInfo.is_merchant && !userInfo.isMerchant) {
+					userInfo.is_merchant = isMerchant ? 1 : 0
+					userInfo.isMerchant = isMerchant ? 1 : 0
+				}
 				// 查询是否商户结果
 			}
 		} catch (merchantError) {
 			console.error('[登录] 查询是否商户失败:', merchantError)
-			userInfo.is_merchant = false
-			userInfo.isMerchant = false
+			// 只补空，不改值：详情已给 1/2 就保留
+			if (!userInfo.is_merchant && !userInfo.isMerchant) {
+				userInfo.is_merchant = 0
+				userInfo.isMerchant = 0
+			}
 		}
 		
 		// 先保存用户信息到本地存储（userInfo是全局的，不需要隔离）
@@ -509,7 +526,7 @@ const handleLogin = async () => {
 		{
 			const redirectUrl = consumePostLoginRedirect()
 			if (redirectUrl) {
-				uni.showToast({ title: '登录成功，返回扫码页', icon: 'none', duration: 1200 })
+				uni.showToast({ title: '登录成功，正在返回', icon: 'none', duration: 1200 })
 				setTimeout(() => uni.reLaunch({ url: redirectUrl }), 350)
 				return
 			}
@@ -586,19 +603,7 @@ const handleLogin = async () => {
 				uni.setStorageSync('userInfo', userInfo)
 				// 已更新用户详情到本地存储
 				
-				// 检查用户is_merchant，如果为2则进入平台模式，如果为1则进入商家模式
-				const isMerchant = userInfo.is_merchant || userInfo.isMerchant || 0
-				if (isMerchant === 2) {
-					console.log('[登录] 检测到用户is_merchant为2，自动进入平台模式')
-					// 进入平台模式
-					switchToMerchantMode()
-					return // 直接返回，不执行后续的goToAppHome
-				} else if (isMerchant === 1) {
-					console.log('[登录] 检测到用户is_merchant为1，自动进入商家模式')
-					// 进入商家模式
-					switchToShopMode()
-					return // 直接返回，不执行后续的goToAppHome
-				}
+				// 所有账号统一落在首页；商家入口收敛到「我的」页
 			}
 		} catch (detailError) {
 			console.error('[登录] 查询用户详情失败:', detailError)
@@ -661,11 +666,12 @@ const onGetPhoneNumber = async (e) => {
 
 		if (!code) throw new Error('获取登录凭证失败')
 
-		// 3.2 准备参数（新版 mp-phone-number 快速验证：只传 code + phone_code，后端用 get-phone 换手机号）
+		// 3.2 准备参数（新版 mp-phone-number 快速验证：code + phone_code，后端用 get-phone 换手机号）
+		// /wechat/login 的 nickName 是必填（1-100 字非空白）；传默认占位值，引导逻辑会把它视为「未设置」
 		const payload = {
 			code: code,
 			phone_code: phoneCode,
-			nickName: '微信用户' // 默认昵称，登录成功后用户可选择是否使用微信昵称
+			nickName: '微信用户'
 		}
 		
 		console.log('[手机号快捷登录] 发送参数（get-phone 流程）')
@@ -720,16 +726,25 @@ const onGetPhoneNumber = async (e) => {
 			try {
 				const mobile = userInfo.mobile || userInfo.phone
 				const isMerchant = await checkIsMerchant(mobile)
-				userInfo.is_merchant = isMerchant
-				userInfo.isMerchant = isMerchant
+				// 布尔接口只做兜底：详情接口没给 1/2 时才填
+				if (!userInfo.is_merchant && !userInfo.isMerchant) {
+					userInfo.is_merchant = isMerchant ? 1 : 0
+					userInfo.isMerchant = isMerchant ? 1 : 0
+				}
 			} catch (merchantError) {
 				console.error('[微信登录] 查询是否商户失败:', merchantError)
-				userInfo.is_merchant = false
-				userInfo.isMerchant = false
+				// 只补空，不改值
+				if (!userInfo.is_merchant && !userInfo.isMerchant) {
+					userInfo.is_merchant = 0
+					userInfo.isMerchant = 0
+				}
 			}
 		} else {
-			userInfo.is_merchant = false
-			userInfo.isMerchant = false
+			// 只补空，不改值
+			if (!userInfo.is_merchant && !userInfo.isMerchant) {
+				userInfo.is_merchant = 0
+				userInfo.isMerchant = 0
+			}
 		}
 		
 		uni.setStorageSync('userInfo', userInfo)
@@ -778,7 +793,7 @@ const onGetPhoneNumber = async (e) => {
 		{
 			const redirectUrl = consumePostLoginRedirect()
 			if (redirectUrl) {
-				uni.showToast({ title: '登录成功，返回扫码页', icon: 'none', duration: 1200 })
+				uni.showToast({ title: '登录成功，正在返回', icon: 'none', duration: 1200 })
 				setTimeout(() => uni.reLaunch({ url: redirectUrl }), 350)
 				return
 			}
@@ -832,19 +847,7 @@ const onGetPhoneNumber = async (e) => {
 				// 重新保存到本地存储
 				uni.setStorageSync('userInfo', userInfo)
 				
-				// 检查用户is_merchant，如果为2则进入平台模式，如果为1则进入商家模式
-				const isMerchant = userInfo.is_merchant || userInfo.isMerchant || 0
-				if (isMerchant === 2) {
-					console.log('[手机号快捷登录] 检测到用户is_merchant为2，自动进入平台模式')
-					// 进入平台模式
-					switchToMerchantMode()
-					return // 直接返回，不执行后续的goToAppHome
-				} else if (isMerchant === 1) {
-					console.log('[手机号快捷登录] 检测到用户is_merchant为1，自动进入商家模式')
-					// 进入商家模式
-					switchToShopMode()
-					return // 直接返回，不执行后续的goToAppHome
-				}
+				// 所有账号统一落在首页；商家入口收敛到「我的」页
 			}
 		} catch (detailError) {
 			console.error('[手机号快捷登录] 查询用户详情失败:', detailError)
@@ -947,10 +950,10 @@ const handleWeChatLogin = async () => {
 					// ========== Code 重复调用检查结束 ==========
 					
 					try {
-						// 调用微信登录接口（nickName 传默认值，登录成功后根据用户选择决定是否使用微信昵称）
+						// 调用微信登录接口（nickName 为必填项，传默认占位值；引导逻辑会把它视为「未设置」）
 						const res = await wechatLogin({
 							code: wxCode,
-							nickName: '微信用户' // 默认昵称，登录成功后用户可选择是否使用微信昵称
+							nickName: '微信用户'
 						})
 						
 						// 登录成功后，标记 code 已使用
@@ -1010,17 +1013,26 @@ const handleWeChatLogin = async () => {
 							try {
 								const mobile = userInfo.mobile || userInfo.phone
 								const isMerchant = await checkIsMerchant(mobile)
-								userInfo.is_merchant = isMerchant
-								userInfo.isMerchant = isMerchant
+								// 布尔接口只做兜底：详情接口没给 1/2 时才填
+								if (!userInfo.is_merchant && !userInfo.isMerchant) {
+									userInfo.is_merchant = isMerchant ? 1 : 0
+									userInfo.isMerchant = isMerchant ? 1 : 0
+								}
 								console.log('[微信登录] 查询是否商户结果:', isMerchant)
 							} catch (merchantError) {
 								console.error('[微信登录] 查询是否商户失败:', merchantError)
-								userInfo.is_merchant = false
-								userInfo.isMerchant = false
+								// 只补空，不改值
+								if (!userInfo.is_merchant && !userInfo.isMerchant) {
+									userInfo.is_merchant = 0
+									userInfo.isMerchant = 0
+								}
 							}
 						} else {
-							userInfo.is_merchant = false
-							userInfo.isMerchant = false
+							// 只补空，不改值
+							if (!userInfo.is_merchant && !userInfo.isMerchant) {
+								userInfo.is_merchant = 0
+								userInfo.isMerchant = 0
+							}
 						}
 						
 						// 先保存用户信息到本地存储（即使没有手机号也要保存user_id）
@@ -1083,7 +1095,7 @@ const handleWeChatLogin = async () => {
 						{
 							const redirectUrl = consumePostLoginRedirect()
 							if (redirectUrl) {
-								uni.showToast({ title: '登录成功，返回扫码页', icon: 'none', duration: 1200 })
+								uni.showToast({ title: '登录成功，正在返回', icon: 'none', duration: 1200 })
 								setTimeout(() => uni.reLaunch({ url: redirectUrl }), 350)
 								return
 							}
@@ -1143,14 +1155,7 @@ const handleWeChatLogin = async () => {
 								// 重新保存到本地存储
 								uni.setStorageSync('userInfo', userInfo)
 								
-								// 检查用户status，如果为3则进入平台模式
-								const userStatus = userInfo.status || userInfo.new_status || 0
-								if (userStatus === 3) {
-									console.log('[微信登录] 检测到用户status为3，自动进入平台模式')
-									// 进入平台模式
-									switchToMerchantMode()
-									return // 直接返回，不执行后续的goToAppHome
-								}
+								// 所有账号统一落在首页；商家入口收敛到「我的」页
 							}
 						} catch (detailError) {
 							console.error('[微信登录] 查询用户详情失败:', detailError)

@@ -767,10 +767,8 @@ export const refreshUserInfo = async () => {
       if (mobileForCheck && !updatedUserInfo.is_merchant) {
         const remoteFlag = await checkIsMerchant(mobileForCheck)
         if (remoteFlag) {
-          updatedUserInfo.is_merchant = true
-          updatedUserInfo.isMerchant = true
-          updatedUserInfo.is_platform = true
-          updatedUserInfo.isPlatform = true
+          updatedUserInfo.is_merchant = 1
+          updatedUserInfo.isMerchant = 1
           console.log('[刷新用户信息] checkIsMerchant 确认为商户:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))
         } else {
           console.log('[刷新用户信息] checkIsMerchant 未确认为商户:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))

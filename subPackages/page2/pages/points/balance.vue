@@ -41,7 +41,12 @@
             </view>
           </view>
           
-          <view v-if="pointsLog.length === 0 && !loading" class="empty-state">
+          <view v-if="loadError && pointsLog.length === 0 && !loading" class="empty-state">
+            <text class="empty-icon">⚠️</text>
+            <text class="empty-text">{{ loadError }}</text>
+          </view>
+
+          <view v-if="!loadError && pointsLog.length === 0 && !loading" class="empty-state">
             <text class="empty-icon">📝</text>
             <text class="empty-text">暂无积分记录</text>
           </view>
@@ -70,9 +75,10 @@ const memberPoints = ref(0)
 const pointsLog = ref([])
 const loading = ref(false)
 const page = ref(1)
-const pageSize = ref(30)
+const pageSize = ref(20)
 const hasMore = ref(true)
 const total = ref(0)
+const loadError = ref('')
 
 // 当前显示的积分（只显示会员积分）
 const currentPointsDisplay = computed(() => {
@@ -116,6 +122,7 @@ const loadPointsLog = async (isMore = false) => {
       page.value = 1
       pointsLog.value = []
       hasMore.value = true
+      loadError.value = ''
     }
     
     console.log('[积分流水] 开始加载,类型: member, 页码:', page.value)
@@ -226,10 +233,12 @@ const loadPointsLog = async (isMore = false) => {
     // 即使加载失败，也显示错误提示
     if (!isMore) {
       pointsLog.value = []
+      loadError.value = (error && error.code === 403) ? '暂无权限查看该流水' : '流水加载失败，请稍后重试'
+      console.warn('[埋点][积分流水加载失败]', { code: error && error.code, msg: error && (error.message || error.msg) })
       // 如果是网络错误或API错误，给用户提示
       if (error.message && !error.message.includes('手机号')) {
         uni.showToast({
-          title: '加载流水失败: ' + (error.message || '未知错误'),
+          title: loadError.value,
           icon: 'none',
           duration: 3000
         })

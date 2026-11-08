@@ -191,7 +191,12 @@ class Request {
               ...responseData
             })
           } else if (res.statusCode === 401) {
-            // Token 过期/未登录（后端返回 401 时触发）
+            // 401 分级：游客静默（不提示、不跳转）；已登录 token 过期才提示并引导登录
+            const token = uni.getStorageSync('token')
+            if (!token) {
+              reject({ code: 401 })
+              return
+            }
             this.handleTokenExpired()
             reject({ code: 401, msg: '登录已过期，请重新登录' })
           } else if (res.statusCode === 404) {
@@ -395,10 +400,16 @@ class Request {
     })
 
     setTimeout(() => {
-      uni.reLaunch({
+      // 用 navigateTo 而非 reLaunch，保留返回栈，用户登录后可退回原页
+      try {
+        const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+        const current = pages.length ? pages[pages.length - 1] : null
+        if (current && current.route && String(current.route).indexOf('pages/index/index') >= 0) return
+      } catch (e) { /* ignore */ }
+      uni.navigateTo({
         url: '/pages/index/index'
       }).catch(err => {
-        console.error('[跳转失败] reLaunch to login failed:', err)
+        console.error('[跳转失败] navigateTo login failed:', err)
       })
     }, 2000)
   }
