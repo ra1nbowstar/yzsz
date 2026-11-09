@@ -252,7 +252,6 @@
 <script setup>
 import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { 
-  uploadImage, 
   faceVerify, 
   verifyPersonal, 
   verifyEnterprise, 
@@ -486,7 +485,7 @@ onMounted(() => {
         // set UI to draft editing (只有在未通过上面路由/存储初始化时需要)
         if (!step.value) step.value = 1
         // 根据草稿设置类型
-        if (currentApplyment.value.subject_type === 'SUBJECT_TYPE_COMPANY') {
+        if (currentApplyment.value.subject_type === 'SUBJECT_TYPE_ENTERPRISE') {
           type.value = 'enterprise'
         } else {
           type.value = 'personal'
@@ -558,7 +557,7 @@ async function uploadImg(field) {
         } catch (e) {
           console.warn('远程创建草稿失败，使用本地', e)
           currentApplyment.value = await createDraft({ 
-            subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL', 
+            subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL',
             subject_info: {}, 
             contact_info: {}, 
             bank_account_info: {} 
@@ -649,88 +648,40 @@ function buildDraftPayload() {
   }
 
   return {
-    subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL',
+    subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL',
     subject_info,
     contact_info,
     bank_account_info
   }
 }
 
-// 保存草稿
+// A draft is complete only after all selected evidence uploads are acknowledged.
 async function saveDraft() {
   savingDraft.value = true
   try {
     const payload = buildDraftPayload()
-    
-    // 先尝试远程保存
-    try {
-      // 统一使用创建接口，后端会根据是否有id判断是创建还是更新
-      const resp = await createWechatApplymentDraft(payload)
-      if (resp && resp.data) {
-        currentApplyment.value = resp.data
-        saveFormToStorage()
-        uni.showToast({ title: '草稿已保存', icon: 'success' })
-        savingDraft.value = false
-        return
-      } else if (resp) {
-        currentApplyment.value = resp
-        saveFormToStorage()
-        uni.showToast({ title: '草稿已保存', icon: 'success' })
-        savingDraft.value = false
-        return
+    const rec = currentApplyment.value && Number(currentApplyment.value.is_draft) === 1
+      ? await updateDraft(currentApplyment.value.id || currentApplyment.value.applyment_id, payload)
+      : await createDraft(payload)
+    currentApplyment.value = rec
+    const applymentId = rec.id || rec.applyment_id
+    if (!applymentId) throw new Error('未获取服务端草稿编号')
+    const fields = ['idFrontList', 'idBackList', 'licenseList', 'legalFrontList', 'legalBackList']
+    const singleFields = ['idFront', 'idBack', 'license', 'legalFront', 'legalBack', 'agentAuth']
+    for (const field of fields) {
+      for (const file of (Array.isArray(form[field]) ? form[field] : [])) {
+        await uploadMedia({ file, media_type: FIELD_TO_MEDIA_TYPE[field] || field, applyment_id: applymentId })
       }
-    } catch (remoteErr) {
-      console.warn('远程保存草稿失败，使用本地保存', remoteErr)
     }
-
-    // 远端失败则回退到本地模拟实现
-    let rec = null
-    if (!currentApplyment.value) {
-      rec = await createDraft(payload)
-      currentApplyment.value = rec
-    } else if (Number(currentApplyment.value.is_draft) === 1) {
-      rec = await updateDraft(currentApplyment.value.id, payload)
-      currentApplyment.value = rec
-    } else {
-      rec = await createDraft(payload)
-      currentApplyment.value = rec
-    }
-
-    // 上传已选图片到媒体库
-    try {
-      const applymentId = currentApplyment.value && (currentApplyment.value.id || currentApplyment.value.applyment_id)
-      if (applymentId) {
-        const fields = ['idFrontList', 'idBackList', 'licenseList', 'legalFrontList', 'legalBackList']
-        const singleFields = ['idFront', 'idBack', 'license', 'legalFront', 'legalBack', 'agentAuth']
-
-        for (const f of fields) {
-          const arr = Array.isArray(form[f]) ? form[f] : []
-          const mediaType = FIELD_TO_MEDIA_TYPE[f] || f
-          for (const fp of arr) {
-            try {
-              const uploaded = await uploadImage(fp)
-              await uploadMedia({ file: { url: uploaded.url, name: fp }, media_type: mediaType, applyment_id: applymentId })
-            } catch (e) { console.warn('upload media failed for', f, fp, e) }
-          }
-        }
-
-        for (const f of singleFields) {
-          const fp = form[f]
-          if (!fp) continue
-          try {
-            const mediaType = FIELD_TO_MEDIA_TYPE[f] || f
-            const uploaded = await uploadImage(fp)
-            await uploadMedia({ file: { url: uploaded.url, name: fp }, media_type: mediaType, applyment_id: applymentId })
-          } catch (e) { console.warn('upload media failed for', f, fp, e) }
-        }
+    for (const field of singleFields) {
+      if (form[field]) {
+        await uploadMedia({ file: form[field], media_type: FIELD_TO_MEDIA_TYPE[field] || field, applyment_id: applymentId })
       }
-    } catch (e) { console.warn('batch upload media failed', e) }
-
+    }
     saveFormToStorage()
-    uni.showToast({ title: '草稿已保存', icon: 'success' })
-  } catch (e) {
-    console.error('保存草稿失败', e)
-    uni.showToast({ title: e && e.message ? e.message : '保存失败', icon: 'none' })
+    uni.showToast({ title: '草稿及所选材料已保存', icon: 'success' })
+  } catch {
+    uni.showModal({ title: '草稿或材料保存未完成', content: '材料上传未确认，请保留当前资料并重试；不能视为材料已保存或实名已核验。', showCancel: false })
   } finally {
     savingDraft.value = false
   }

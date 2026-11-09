@@ -452,9 +452,7 @@ export const updateUserPassword = async (oldPassword, newPassword, mobile = null
   if (!mobile) {
     const userInfo = uni.getStorageSync('userInfo') || {}
     mobile = userInfo.mobile
-    if (!mobile) {
-      return Promise.reject(new Error('缺少登录手机号，请重新登录'))
-    }
+    // 资料接口以 Bearer 身份为准，缺少本地 mobile 时仍可安全改密。
   }
   
   if (!oldPassword || !newPassword) {
@@ -809,14 +807,13 @@ export const verifyWechatToken = (accessToken, openid) => {
  * 手机号密码登录（一键登录，不存在则自动注册）
  * @param {String} mobile 手机号
  * @param {String} password 密码
- * @param {String} name 昵称（选填）
  * @returns {Promise}
  */
-export const phonePasswordLogin = (mobile, password, name = '') => {
+export const phonePasswordLogin = (mobile, password) => {
   return request.post('/user/auth', {
     mobile,
     password,
-    name: name || undefined // 如果昵称为空，则不传该字段
+    // 手机注册没有可信 openid，昵称在微信登录后经资料审核设置。
   })
 }
 

@@ -85,7 +85,7 @@
         <text class="func-icon iconfont icon-butie"></text>
         <text class="func-text">周补贴发放</text>
       </view>
-      <view class="func-card" @tap="goToPage('/subPackages/page1/pages/merchant/fund-pool')">
+      <view v-if="platformAdmin" class="func-card" @tap="goToPage('/subPackages/page1/pages/merchant/fund-pool')">
         <text class="func-icon iconfont icon-putongzijinchi"></text>
         <text class="func-text">资金池管理</text>
       </view>
@@ -109,11 +109,11 @@
         <text class="func-icon iconfont icon-hongbao" style="color: #07c160;"></text>
         <text class="func-text">永久收款码</text>
       </view>
-      <view class="func-card" @tap="goToPage('/subPackages/page2/pages/merchant/weight-adjust')">
+      <view v-if="platformAdmin" class="func-card" @tap="goToPage('/subPackages/page2/pages/merchant/weight-adjust')">
         <text class="func-icon iconfont icon-shezhi" style="color: #673ab7;"></text>
         <text class="func-text">权重调整</text>
       </view>
-	  <view class="func-card" @tap="goToPage('/subPackages/page2/pages/fund-pool/index')">
+      <view v-if="platformAdmin" class="func-card" @tap="goToPage('/subPackages/page2/pages/fund-pool/index')">
 	    <text class="func-icon iconfont icon-tixian" style="color: #ff6b00;"></text>
 	    <text class="func-text">资金池使用</text>
 	  </view>
@@ -200,6 +200,8 @@ import { ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getOrderList, getAllOrders, exportDailySummary} from '@/api/order.js'
 import { getCompanyPointsBalance, getPlatformRevenueBalance } from '../../api/finance.js'
+import request from '@/utils/request.js'
+const platformAdmin = ref(false)
 // 商家信息
 const merchantInfo = ref({
   shopName: '示例商店',
@@ -392,7 +394,19 @@ const refreshMerchantDashboard = async () => {
     
     // 并行加载订单数据、平台积分和平台资金
     const [ordersRes, pointsRes, revenueRes] = await Promise.all([
-      getAllOrders({ page: 1, pageSize: 100 }),
+      (async () => {
+        const list = []
+        let page = 1
+        let hasMore = true
+        while (hasMore) {
+          const res = await getAllOrders({ page, pageSize: 100 })
+          const data = res.data || res
+          list.push(...data.list)
+          hasMore = data.pagination.has_more
+          page += 1
+        }
+        return { data: { list } }
+      })(),
       getCompanyPointsBalance().catch(err => {
         if (err && (err.statusCode === 403 || err.code === 403)) permissionDenied.value = true
         console.error('[平台中心] 获取平台积分失败:', err)
@@ -607,28 +621,12 @@ function openBindCard() {
 	console.log('api代码为调用，跳转到 银行卡绑定 页面，前端运行正常')
 	uni.navigateTo({ url: '/subPackages/page2/pages/merchant/bindcard' })
 }
-onMounted(() => {
-  refreshMerchantDashboard()
-})
-
-onShow(() => {
-  // 简单的权限控制：检查当前用户是否在白名单中
-  const userInfo = uni.getStorageSync('userInfo') || {}
-  const userId = userInfo.id
-  
-  // 模拟白名单，这里为了测试方便，先假设所有登录用户都能看，或者指定几个ID
-  // 实际生产中应改为 ['1001', 'admin', ...]
-  // 如果需要严格限制，检查 !whitelist.includes(userId)
-  const isAuthorized = true 
-  
-  if (!isAuthorized) {
-    uni.showToast({ title: '无权访问平台中心', icon: 'none' })
-    setTimeout(() => {
-      uni.switchTab({ url: '/pages/home/home' })
-    }, 1500)
-    return
-  }
-  
+onShow(async () => {
+  platformAdmin.value = false
+  try {
+    const capability = await request.get('/user/capabilities')
+    platformAdmin.value = capability.platform_admin === true
+  } catch { /* Deny admin navigation until the server authorizes it. */ }
   refreshMerchantDashboard()
 })
 </script>

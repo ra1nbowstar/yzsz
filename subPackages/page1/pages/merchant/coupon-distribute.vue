@@ -203,8 +203,8 @@ const handleDistribute = async () => {
   if (!formData.value.amount || formData.value.amount.trim() === '') {
     return uni.showToast({ title: '请输入优惠金额', icon: 'none' })
   }
-  const amount = parseInt(formData.value.amount, 10)
-  if (isNaN(amount) || amount <= 0 || !Number.isInteger(amount)) {
+  const amount = String(formData.value.amount).trim()
+  if (!/^[1-9][0-9]*$/.test(amount)) {
     return uni.showToast({ title: '请输入有效的整数金额（大于0）', icon: 'none' })
   }
 
@@ -214,7 +214,8 @@ const handleDistribute = async () => {
     // 调用API发放优惠券（coupon_type 固定为 'user'）
     await distributeCoupon({
       user_id: userId,
-      amount: amount,
+      face_value_yuan: amount,
+      quantity: 1,
       coupon_type: 'user', // 固定为用户优惠券
       applicable_product_type: formData.value.applicable_product_type || 'all'
     })

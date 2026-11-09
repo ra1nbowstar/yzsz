@@ -6,7 +6,7 @@
         <view class="stat-item main">
           <text class="stat-value">¥{{ totalStats.totalReward }}</text>
           <text class="stat-label">累计团队奖励</text>
-          <view class="stat-trend" :class="totalStats.trend > 0 ? 'up' : 'down'">
+          <view v-if="totalStats.trend !== null" class="stat-trend" :class="totalStats.trend > 0 ? 'up' : 'down'">
             <text class="trend-icon">{{ totalStats.trend > 0 ? '↗' : '↘' }}</text>
             <text class="trend-text">{{ Math.abs(totalStats.trend) }}%</text>
           </view>
@@ -180,7 +180,7 @@ const totalStats = ref({
   totalReward: 0,
   rewardCount: 0,
   avgReward: 0,
-  trend: 0
+  trend: null
 })
 
 // 筛选选项
@@ -233,7 +233,8 @@ const showSortOptions = () => {
     itemList: sortOptions.value.map(item => item.label),
     success: (res) => {
       currentSort.value = sortOptions.value[res.tapIndex]
-      sortRecords()
+      page.value = 1
+      loadRewardRecords()
     }
   })
 }
@@ -341,7 +342,7 @@ const loadRewardStats = async () => {
         avgReward: res.data.rewardCount > 0 
           ? parseFloat((res.data.totalReward / res.data.rewardCount).toFixed(2))
           : 0,
-        trend: parseFloat(res.data.trend || 0)
+        trend: res.data.trend == null ? null : parseFloat(res.data.trend)
       }
     }
   } catch (error) {
@@ -368,7 +369,7 @@ const loadRewardRecords = async () => {
     if (res.data) {
       const newRecords = (res.data.list || []).map(item => ({
         id: item.id,
-        memberName: item.from_user_name || item.member_name || item.memberName || '',
+        memberName: item.from_name || '',
         memberLevel: item.member_level || item.memberLevel || 0,
         layer: item.layer || 1,
         productName: item.product_name || item.productName || item.order_product_name || '商品',
@@ -377,7 +378,7 @@ const loadRewardRecords = async () => {
         rewardRate: parseFloat(item.reward_rate || item.rewardRate || item.rate || 0),
         time: item.created_at || item.time || '',
         timestamp: new Date(item.created_at || item.time).getTime() || Date.now(),
-        status: item.status || 'pending'
+        status: item.status || 'unknown'
       }))
       
       if (page.value === 1) {

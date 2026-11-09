@@ -85,7 +85,9 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getRightsOverview, exchangeCouponsForEggs } from '@/api/rights.js'
+import { getRightsOverview } from '@/api/rights.js'
+import request from '@/utils/request.js'
+import { getCommerceAttempt, postCommerceAttempt } from '@/utils/commerce-attempt.js'
 
 const activeTab = ref('egg')
 
@@ -119,54 +121,55 @@ const loadRights = async () => {
 	try {
 		const res = await getRightsOverview()
 		const d = (res && res.data) || res || {}
-		couponBalance.value = formatQty(d.coupons && d.coupons.balance)
-		unitValue.value = formatQty(d.eggs && d.eggs.current_unit_value)
+		couponBalance.value = d.coupons?.balance ?? '0'
+		const pending = getCommerceAttempt('egg-exchange')
+		unitValue.value = pending ? pending.body.expected_unit_value : (d.eggs?.current_unit_value ?? '0')
+		if (pending) couponInput.value = pending.body.coupon_quantity
 	} catch (e) {
 		console.warn('[兑换中心] 权益数据加载失败', e)
 	}
 }
 
 onShow(() => {
+	const pending = getCommerceAttempt('egg-exchange')
+	if (pending) {
+		couponInput.value = pending.body.coupon_quantity
+		unitValue.value = pending.body.expected_unit_value
+	}
 	loadRights()
 })
 
-// 幂等键：网络失败重试复用同一 key；兑换成功或 409 改价后清空，下次用新 key
-let pendingKey = ''
 
 /** 券兑咯哒蛋：POST /api/v1/rights/egg-exchanges（Idempotency-Key + expected_unit_value） */
 const doExchangeEgg = async () => {
-	const n = Number(couponInput.value)
-	if (!Number.isFinite(n) || n <= 0) {
+	const pending = getCommerceAttempt('egg-exchange')
+	const n = pending ? pending.body.coupon_quantity : String(couponInput.value).trim()
+	if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(n) || Number(n) <= 0) {
 		uni.showToast({ title: '请输入有效的券数量', icon: 'none' })
 		return
 	}
 	// 除零保护：实时咯哒值为 0/不可用时不做除法、不提交
-	const v = Number(unitValue.value)
-	if (!Number.isFinite(v) || v <= 0) {
+	const v = pending ? pending.body.expected_unit_value : String(unitValue.value)
+	if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(v) || Number(v) <= 0) {
 		uni.showToast({ title: '暂不可计算', icon: 'none' })
 		return
 	}
-	if (!pendingKey) {
-		pendingKey = `egg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-	}
 	uni.showLoading({ title: '兑换中...', mask: true })
 	try {
-		await exchangeCouponsForEggs({ coupon_quantity: n, expected_unit_value: v }, pendingKey)
-		pendingKey = ''
+		const body = pending ? pending.body : { coupon_quantity: n, expected_unit_value: v }
+		await postCommerceAttempt(request, 'egg-exchange', '/api/v1/rights/egg-exchanges', body, pending?.key)
 		uni.hideLoading()
 		uni.showToast({ title: '兑换成功', icon: 'success' })
 		couponInput.value = ''
 		await loadRights()
 	} catch (e) {
 		uni.hideLoading()
-		const code = e && (e.code || e.statusCode)
-		if (code === 409) {
-			// 并发改价：换新 key，刷新实时咯哒值，并明确提示用户重新确认
-			pendingKey = ''
+		if (e?.statusCode === 409 && e?.code === 'QUOTE_STALE') {
+			// Only an authoritative pre-write stale quote releases the retained attempt.
 			await loadRights()
 			uni.showToast({ title: '咯哒值已变化，请确认新的兑换结果', icon: 'none', duration: 3000 })
 		}
-		// 其它失败（网络等）：保留 pendingKey，重试时复用
+		// 网络结果未知时，持久尝试身份会在重试时复用。
 	}
 }
 

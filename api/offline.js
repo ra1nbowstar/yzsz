@@ -11,7 +11,8 @@ import request from '@/utils/request.js'
  * @param {Number|null} [coupon_id] 优惠券ID（可选）
  * @returns {Promise} 成功时返回支付参数（如 timeStamp、nonceStr、package、paySign 等，供 wx.requestPayment 使用）
  */
-export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_id = null) => {
+export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_id = null, total_fee = null, points_to_use = null) => {
+  if (points_to_use > 0) return Promise.reject(new Error('线下积分抵扣暂不可用'))
   if (!order_no || !String(order_no).trim()) {
     return Promise.reject(new Error('订单号不能为空'))
   }
@@ -22,6 +23,7 @@ export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_
   }
   const url = `/api/offline/zhifu/tongyi?${query}`
   const body = {}
+  if (total_fee != null) body.total_fee = total_fee
   if (openid && String(openid).trim()) body.openid = String(openid).trim()
   if (user_id != null && user_id !== '') body.user_id = user_id
   return request.post(url, body)

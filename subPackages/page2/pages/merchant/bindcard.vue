@@ -10,7 +10,7 @@
     <view class="card" v-if="cardList.length > 0">
       <text class="card-title">我的银行卡</text>
       <view v-for="(c, i) in cardList" :key="i" class="card-item">
-        <text class="card-mask">{{ c.bank_name || c.account_bank || '银行卡' }} ****{{ (c.account_number || c.number || '').slice(-4) }}</text>
+        <text class="card-mask">{{ c.bank_name || c.account_bank || '银行卡' }} {{ c.account_number_masked || ('**** ' + (c.account_number_tail || '****')) }}</text>
         <button v-if="!c.is_default" class="btn-small" @tap="setDefault(c)">设为默认</button>
         <text v-else class="default-tag">默认</text>
       </view>
@@ -32,7 +32,7 @@
 import { ref, onMounted } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import WxSubMerchant from '@/components/WxSubMerchant.vue'
-import { getMyBankCards, getBankCardLogs, setDefaultBankCard } from '@/api/bankcard.js'
+import { getBankCardList, getBankCardLogs, setDefaultBankCard } from '@/api/bankcard.js'
 
 const cardList = ref([])
 const logs = ref([])
@@ -40,7 +40,7 @@ const logs = ref([])
 async function loadExtras() {
   try {
     const [cardsRes, logsRes] = await Promise.all([
-      getMyBankCards().catch(() => null),
+      getBankCardList().catch(() => null),
       getBankCardLogs().catch(() => null)
     ])
     const cards = cardsRes?.data ?? cardsRes?.list ?? (Array.isArray(cardsRes) ? cardsRes : (cardsRes ? [cardsRes] : []))
@@ -55,9 +55,9 @@ async function loadExtras() {
 
 async function setDefault(card) {
   try {
-    const id = card.id ?? card.bank_card_id ?? card.account_number
+    const id = card.id
     if (!id) { uni.showToast({ title: '无法设置', icon: 'none' }); return }
-    await setDefaultBankCard({ bank_card_id: id, id })
+    await setDefaultBankCard({ account_id: id })
     uni.showToast({ title: '已设为默认', icon: 'success' })
     loadExtras()
   } catch (e) {

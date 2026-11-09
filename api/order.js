@@ -6,6 +6,7 @@ import request from '@/utils/request.js'
 import config from '@/utils/config.js'
 import { getDeliveryListSorted } from '@/data/delivery-list.js'
 import { getStoredNumericUserId } from '@/utils/userInfo.js'
+import { postCommerceAttempt } from '@/utils/commerce-attempt.js'
 
 /**
  * 创建订单（包含积分信息）
@@ -68,7 +69,7 @@ export const getOrderList = (params = {}) => {
     queryParams.pageSize = parseInt(queryParams.pageSize, 10)
   }
 
-  return request.get(`/order/${userIdInt}`, queryParams)
+  return request.get(`/order/${userIdInt}`, queryParams).then(res => res?.list ? { data: res } : res)
 }
 
 /**
@@ -160,11 +161,8 @@ export const offlinePayUnified = (order_no, coupon_id = null, openid = '', user_
     const fen = Math.max(0, Math.round(Number(total_fee)))
     body.total_fee = fen
   }
-  // 传递积分参数（注意单位：需与后端确认）
-  if (points_to_use != null && points_to_use > 0) {
-    // 如果后端要求以分为单位，则乘以100；如果以元为单位，直接传递
-    // 此处假设后端以元为单位，直接传递 points_to_use
-    body.points_to_use = points_to_use
+  if (points_to_use != null && Number(points_to_use) !== 0) {
+    return Promise.reject(new Error('线下积分抵扣规则未接入，暂不可用'))
   }
   return request.post(`/api/offline/zhifu/tongyi?${query}`, body)
 }
@@ -307,7 +305,7 @@ export const createOrder = (data) => {
 
   console.log('[createOrder] 接收到的 data.coupon_ids:', data.coupon_ids);	
   console.log('[createOrder] 最终请求数据:', JSON.stringify(requestData, null, 2));
-  return request.post('/order/create', requestData)
+  return postCommerceAttempt(request, 'order-create', '/order/create', requestData, data.idempotency_key || data.idempotencyKey)
 }
 
 /**
@@ -429,6 +427,8 @@ export const confirmReceive = (payload) => {
   }
   return request.post('/order/confirm-receive', body)
 }
+
+export const syncMerchantReceipt = (payload) => request.post('/merchant/sync-receipt', { order_number: payload.order_number })
 
 /**
  * 删除订单
@@ -624,7 +624,7 @@ export const getAllOrders = (params = {}) => {
     queryParams.pageSize = params.pageSize
   }
 
-  return request.get('/merchant/orders', queryParams)
+  return request.get('/merchant/orders', queryParams).then(res => res?.list ? { data: res } : res)
 }
 
 /**
@@ -653,7 +653,7 @@ export const getMerchantOrders = (params = {}) => {
     queryParams.pageSize = params.pageSize
   }
   
-  return request.get('/merchant/orders', queryParams)
+  return request.get('/merchant/orders', queryParams).then(res => res?.list ? { data: res } : res)
 }
 
 /**

@@ -1,74 +1,21 @@
-/**
- * 模拟商户实名认证相关后端接口（占位）
- * 全部使用 console.log 占位输出："api代码为调用，...前端运行正常"
- */
+/** Merchant identity operations; unsupported provider paths fail closed. */
 
 import request from '@/utils/request.js'
 
-// 模拟文件上传（前端占位）
-export const uploadImage = async (filePath) => {
-  console.log('api代码为调用，上传图片，前端运行正常', filePath)
-  // 占位：在真实场景这里会上传到对象存储并返回 URL
-  return new Promise((resolve) => {
-    setTimeout(() => resolve({ url: filePath }), 300)
-  })
+export const uploadImage = async () => {
+  throw Object.assign(new Error('通用实名图片存储暂不可用，请使用已认证的进件材料上传接口'), { code: 'IDENTITY_MEDIA_UPLOAD_UNAVAILABLE' })
 }
 
-// 人脸活体检测占位（对接权威人脸识别接口）
-export const faceVerify = async (faceImagePath) => {
-  console.log('api代码为调用，进行人脸活体检测，前端运行正常', faceImagePath)
-  return new Promise((resolve) => {
-    setTimeout(() => resolve({ success: true }), 800)
-  })
+// Identity evidence must be verified by a configured authoritative provider.
+export const faceVerify = async () => {
+  throw Object.assign(new Error('活体认证暂不可用：需接入实名供应商、用户绑定挑战及签名回调'), { code: 'LIVENESS_UNAVAILABLE' })
 }
 
-// 个人实名校验：对接公安库（占位实现）
-export const verifyPersonal = async (data) => {
-  console.log('api代码为调用，校验个人身份证，前端运行正常', JSON.parse(JSON.stringify(data)))
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // 简单规则：姓名包含“测试”或证件号长度不为15/18视为无效
-      if (!data.name || !data.id) {
-        resolve({ valid: false, reason: '姓名或证件号不能为空' })
-        return
-      }
-      const id = String(data.id || '')
-      if (!(id.length === 15 || id.length === 18)) {
-        resolve({ valid: false, reason: '证件号格式不正确' })
-        return
-      }
-      if (/测试|fake|虚假/.test(data.name)) {
-        resolve({ valid: false, reason: '疑似虚假姓名，请核对后重试' })
-        return
-      }
-      // 通过
-      resolve({ valid: true })
-    }, 600)
-  })
+export const verifyPersonal = async () => {
+  throw new Error('个人实名核验暂不可用：需接入权威实名供应商')
 }
-
-// 企业实名认证校验（对接工商API，占位实现）
-export const verifyEnterprise = async (data) => {
-  console.log('api代码为调用，校验企业营业执照，前端运行正常', JSON.parse(JSON.stringify(data)))
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      if (!data.company_name || !data.credit_code) {
-        resolve({ valid: false, reason: '企业名称或统一社会信用代码不能为空' })
-        return
-      }
-      const code = String(data.credit_code || '')
-      if (code.length !== 18) {
-        resolve({ valid: false, reason: '统一社会信用代码格式不正确' })
-        return
-      }
-      if (/测试|fake|虚假/.test(data.company_name)) {
-        resolve({ valid: false, reason: '疑似虚假企业名称，请核对后重试' })
-        return
-      }
-      // 通过
-      resolve({ valid: true })
-    }, 800)
-  })
+export const verifyEnterprise = async () => {
+  throw new Error('企业实名核验暂不可用：需接入权威企业核验供应商')
 }
 
 // 创建或提交微信进件草稿（对接后端 /wechat-applyment/draft）
@@ -88,6 +35,7 @@ export const createWechatApplymentDraft = async (data, token) => {
     business_category_locked: data?.business_category_locked ?? false,
     ...data
   }
+  payload.applyment_id = payload.applyment_id || null
   options.header = { 'Content-Type': 'application/json', ...options.header }
   return request.post('/wechat-applyment/draft', JSON.stringify(payload), options)
 }

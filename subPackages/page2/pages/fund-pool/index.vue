@@ -1,9 +1,9 @@
 <template>
-  <view class="fund-pool-page">
+  <view v-if="platformAdmin" class="fund-pool-page">
     <!-- 页面标题 -->
     <view class="header">
-      <text class="title">我的资金</text>
-      <text class="subtitle">资金可转化为优惠券使用</text>
+      <text class="title">平台资金池</text>
+      <text class="subtitle">仅平台管理员可操作，不是商户个人余额</text>
     </view>
 
     <!-- 资金池转优惠券操作（资金池为选择，非手填） -->
@@ -100,6 +100,8 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getTransformAllowed, getFundPoolAllocations, transformToCoupon } from '@/api/fund-pool.js'
+import request from '@/utils/request.js'
+const platformAdmin = ref(false)
 
 const fundList = ref([])
 const loading = ref(false)
@@ -411,8 +413,13 @@ const goToRecords = () => {
   })
 }
 
-onLoad(() => {
-  loadFundList()
+onLoad(async () => {
+  try {
+    const capability = await request.get('/user/capabilities')
+    platformAdmin.value = capability.platform_admin === true
+    if (platformAdmin.value) loadFundList()
+    else uni.showToast({ title: '需要平台管理员权限', icon: 'none' })
+  } catch { platformAdmin.value = false }
 })
 </script>
 

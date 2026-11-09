@@ -4,6 +4,8 @@
 
 import request from '@/utils/request.js'
 
+export const getPublicWelfareSummary = () => request.get('/api/public-welfare/summary')
+
 /**
  * 查询公益基金余额
  * @returns {Promise} 返回公益基金余额数据

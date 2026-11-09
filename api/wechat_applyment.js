@@ -21,7 +21,7 @@ function _normalizeApplyment(raw) {
   const id = raw.id || raw.applyment_id
   return {
     id,
-    applyment_id: raw.applyment_id || id,
+    applyment_id: id,
     business_code: raw.business_code,
     sub_mchid: raw.sub_mchid,
     subject_type: raw.subject_type,
@@ -34,7 +34,11 @@ function _normalizeApplyment(raw) {
     submitted_at: raw.submitted_at,
     created_at: raw.created_at,
     updated_at: raw.updated_at,
-    ...raw
+    ...raw,
+    id,
+    applyment_id: id,
+    subject_info: typeof raw.subject_info === 'string' ? JSON.parse(raw.subject_info) : (raw.subject_info || {}),
+    contact_info: typeof raw.contact_info === 'string' ? JSON.parse(raw.contact_info) : (raw.contact_info || {})
   }
 }
 
@@ -50,14 +54,13 @@ export async function createDraft({
   business_category_locked = false
 } = {}) {
   const payload = {
-    applyment_id: applyment_id || 0,
+    applyment_id: applyment_id || null,
     subject_type: subject_type || 'SUBJECT_TYPE_INDIVIDUAL',
     subject_info: subject_info || {},
     contact_info: contact_info || {},
     bank_account_info: bank_account_info || {},
     business_category_locked: !!business_category_locked
   }
-  if (user_id) payload.user_id = user_id
   // 与 submit 一致：显式 JSON.stringify，确保微信小程序中嵌套对象不丢失
   const res = await request.post('/wechat-applyment/draft', JSON.stringify(payload), {
     header: { 'Content-Type': 'application/json' }
@@ -75,7 +78,7 @@ export async function updateDraft(id, payload = {}) {
   if (payload.bank_account_info) data.bank_account_info = payload.bank_account_info
   if (payload.contact_info) data.contact_info = payload.contact_info
   if (payload.subject_info) data.subject_info = payload.subject_info
-  const res = await request.post('/wechat-applyment/core-info/modify', JSON.stringify(data), {
+  const res = await request.post('/wechat-applyment/draft', JSON.stringify(data), {
     header: { 'Content-Type': 'application/json' }
   })
   return _normalizeApplyment(res?.data || res)
@@ -89,34 +92,30 @@ export async function getApplymentById(id) {
   return _normalizeApplyment(raw)
 }
 
-// 获取进件配置（结算规则等）-> GET /wechat-applyment/config，后端可返回 { settle_rule_id } 供提交使用
-export async function getApplymentConfig() {
-  try {
-    const res = await request.get('/wechat-applyment/config')
-    return res?.data || res || null
-  } catch {
-    return null
-  }
-}
 
-// 列举进件（草稿/已提交）-> 尝试 GET /wechat-applyment/list，若无则通过 status 回退
+// Restore all owned pages; server identity is always taken from Bearer.
 export async function listApplyments({ user_id = null, is_draft = null, applyment_state = null } = {}) {
   try {
     const params = {}
     if (is_draft !== null) params.is_draft = is_draft
     if (applyment_state) params.applyment_state = applyment_state
-    if (user_id) params.user_id = user_id
-    const res = await request.get('/wechat-applyment/list', params)
-    const list = res?.data || res?.list || (Array.isArray(res) ? res : [])
-    return (Array.isArray(list) ? list : []).map(_normalizeApplyment)
+    const all = []
+    let page = 1
+    let hasMore = true
+    while (hasMore) {
+      const res = await request.get('/wechat-applyment/list', { ...params, page, page_size: 100 })
+      all.push(...(res?.data?.items ?? []).map(_normalizeApplyment))
+      hasMore = res?.data?.has_more === true
+      page++
+    }
+    return all
   } catch (e) {
-    if (e?.code === 404 || e?.statusCode === 404) return []
     throw e
   }
 }
 
 // 提交进件 -> POST /wechat-applyment/submit
-// 后端需完整结构：applyment_id、subject_type、subject_info、contact_info、bank_account_info、settlement_info、business_category_locked
+// Settlement policy is exclusively server configured.
 export async function submitApplyment({
   id,
   applyment_id = null,
@@ -125,7 +124,6 @@ export async function submitApplyment({
   contact_info = {},
   bank_account_info = {},
   business_info = null,
-  settlement_info = null,
   business_category_locked = false
 } = {}) {
   const aid = id || applyment_id
@@ -139,8 +137,6 @@ export async function submitApplyment({
     business_category_locked: !!business_category_locked
   }
   if (business_info && typeof business_info === 'object') payload.business_info = business_info
-  // 结算规则：前端有则传 settlement_info；未传时由后端在转发微信前填充 settle_rule_id
-  if (settlement_info && typeof settlement_info === 'object' && settlement_info.settle_rule_id) payload.settlement_info = settlement_info
   // 微信小程序需传 JSON 字符串，否则嵌套对象可能丢失
   const res = await request.post('/wechat-applyment/submit', JSON.stringify(payload), {
     header: { 'Content-Type': 'application/json' }
@@ -176,22 +172,15 @@ export async function uploadMedia({ file, media_type, applyment_id = null } = {}
       success: (res) => {
         if (res.statusCode === 200 || res.statusCode === 201) {
           try {
-            let data = res.data
-            if (typeof res.data === 'string') {
-              try {
-                data = JSON.parse(res.data)
-              } catch {
-                data = { raw: res.data }
-              }
+            const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+            const media = data?.data
+            if (data?.success !== true || data?.code !== 0 || typeof media?.media_id !== 'string' || !media.media_id.trim()) {
+              reject(new Error('材料上传未获服务端确认'))
+              return
             }
-            const err = data?.error || (data?.code && data.code !== 0 && data.code !== 200 ? data : null)
-            if (err) {
-              reject(new Error(data?.message || data?.msg || '上传失败'))
-            } else {
-              resolve(data?.data || data)
-            }
-          } catch (e) {
-            resolve(res.data)
+            resolve(media)
+          } catch {
+            reject(new Error('材料上传响应无效'))
           }
         } else {
           reject(new Error(`上传失败[${res.statusCode}]`))
@@ -263,14 +252,14 @@ export async function getMerchantInfoList() {
   const res = await request.get('/wechat-applyment/merchant-info')
   const raw = res?.data ?? res
   if (Array.isArray(raw)) return raw
-  return raw?.list ?? raw?.data ?? []
+  if (Array.isArray(raw?.list)) return raw.list
+  return raw && typeof raw === 'object' ? [raw] : []
 }
 
 export default {
   createDraft,
   updateDraft,
   getApplymentById,
-  getApplymentConfig,
   listApplyments,
   submitApplyment,
   uploadMedia,

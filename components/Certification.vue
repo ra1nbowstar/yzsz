@@ -316,8 +316,8 @@
 
 <script setup>
 import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { faceVerify, verifyPersonal, verifyEnterprise, createWechatApplymentDraft } from '@/api/merchant.js'
-import { createDraft, updateDraft, listApplyments, submitApplyment, uploadMedia, listMedia, getApplymentById, getApplymentConfig } from '@/api/wechat_applyment.js'
+import { faceVerify, verifyPersonal, verifyEnterprise } from '@/api/merchant.js'
+import { createDraft, updateDraft, listApplyments, submitApplyment, uploadMedia, listMedia, getApplymentById } from '@/api/wechat_applyment.js'
 import config from '@/utils/config.js'
 
 // 表单字段 -> 后端 media_type 映射（后端要求 id_card_front / id_card_back 等）
@@ -646,26 +646,17 @@ async function uploadImg(field) {
       uni.showToast({ title: ok.reason || '图片不满足要求', icon: 'none' })
       return
     }
-    // 所有照片仅需一张：列表字段也只保留一张，新上传则替换
-    if (field.endsWith('List')) {
-      form[field] = [tempPath]
-    } else {
-      form[field] = tempPath
+    if (!currentApplyment.value) {
+      currentApplyment.value = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info: {}, contact_info: {}, bank_account_info: {} })
     }
-    // 如果存在草稿或未创建草稿，则上传到 applyment 媒体库（需传本地路径给 uni.uploadFile）
-    try {
-      if (!currentApplyment.value) {
-        currentApplyment.value = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info: {}, contact_info: {}, bank_account_info: {} })
-      }
-      const applymentId = currentApplyment.value.applyment_id ?? currentApplyment.value.id
-      const mediaType = FIELD_TO_MEDIA_TYPE[field] || field
-      await uploadMedia({ file: tempPath, media_type: mediaType, applyment_id: applymentId })
-    } catch (e) { console.warn('applyment uploadMedia failed', e) }
-    // 保存本地临时数据
+    const applymentId = currentApplyment.value.id ?? currentApplyment.value.applyment_id
+    const mediaType = FIELD_TO_MEDIA_TYPE[field] || field
+    await uploadMedia({ file: tempPath, media_type: mediaType, applyment_id: applymentId })
+    // Only publish the selected image after authoritative upload acknowledgement.
+    form[field] = field.endsWith('List') ? [tempPath] : tempPath
     saveFormToStorage()
   } catch (err) {
-    console.error('选择或上传图片失败', err)
-    uni.showToast({ title: '上传失败', icon: 'none' })
+    uni.showModal({ title: '材料上传未确认', content: '所选图片未保存，请重新选择并上传；不能视为实名材料已提交。', showCancel: false })
   }
 }
 
@@ -709,48 +700,13 @@ async function validateImage(filePath) {
 }
 
 async function startFace() {
-  console.log('api代码为调用，开始人脸识别，实名组件前端运行正常')
-  status.value = 'checking'
-  step.value = 2
+  facePassed.value = false
+  status.value = 'pending'
+  step.value = 1
   try {
-    // 对企业与个人均需法人/本人活体
-    // 这里使用任意一张已上传的身份证图片作为人脸图占位
-    const faceImage = form.idFront || form.legalFront || ''
-    if (!faceImage) {
-      uni.showToast({ title: '请先上传证件人像照片', icon: 'none' })
-      status.value = 'pending'
-      step.value = 1
-      return
-    }
-    const res = await faceVerify(faceImage)
-    if (res && res.success) {
-      uni.showToast({ title: '人脸识别通过', icon: 'success' })
-      facePassed.value = true
-      // 保存识别状态/表单
-      saveFormToStorage()
-      // 回退到表单界面并滚动到提交位置，方便用户直接提交审核
-      status.value = 'pending'
-      step.value = 1
-      try {
-        // 延迟一点以确保页面渲染完成
-        setTimeout(() => {
-          if (typeof uni.pageScrollTo === 'function') {
-            uni.pageScrollTo({ scrollTop: 99999, duration: 300 })
-          }
-        }, 80)
-      } catch (e) {
-        console.warn('滚动到提交位置失败', e)
-      }
-    } else {
-      uni.showToast({ title: '人脸识别未通过', icon: 'none' })
-      status.value = 'pending'
-      step.value = 1
-    }
+    await faceVerify()
   } catch (err) {
-    console.error('人脸识别失败', err)
-    uni.showToast({ title: '人脸识别失败', icon: 'none' })
-    status.value = 'pending'
-    step.value = 1
+    uni.showModal({ title: '活体认证暂不可用', content: err.message, showCancel: false })
   }
 }
 
@@ -839,11 +795,11 @@ async function submitCert() {
       ? { contact_name: contactName, contact_id_number: (form.agent_id || '').trim(), mobile_phone: (form.mobile_phone || '').trim(), contact_email: (form.contact_email || '').trim() }
       : { contact_name: contactName, contact_id_number: (form.id || '').trim(), mobile_phone: (form.mobile_phone || '').trim(), contact_email: (form.contact_email || '').trim() }
     if (!currentApplyment.value) {
-      currentApplyment.value = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info, contact_info: _contact, bank_account_info })
+      currentApplyment.value = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info, contact_info: _contact, bank_account_info })
     } else if (Number(currentApplyment.value.is_draft) === 1) {
-      await updateDraft(currentApplyment.value.id, { subject_info, contact_info: _contact, bank_account_info })
+      await updateDraft(currentApplyment.value.id, { subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info, contact_info: _contact, bank_account_info })
     } else {
-      currentApplyment.value = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info, contact_info: _contact, bank_account_info })
+      currentApplyment.value = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info, contact_info: _contact, bank_account_info })
     }
 
     // 提交前上传所有材料到进件媒体库，并收集 identity_info 所需的 media_id
@@ -932,7 +888,6 @@ async function submitCert() {
     if (!idCardCopy || !idCardNational) {
       console.warn('[submitApplyment] identity_info 缺少 media_id，后端需从上传材料中填充 id_card_copy/id_card_national')
     }
-    console.log('[submitApplyment] 传给后端的完整请求数据:', JSON.stringify({ subject_info, contact_info, bank_account_info }))
 
     // submit（后端需完整结构，contact_name、identity_info 必填）
     const contact_info = isEnterprise.value
@@ -941,28 +896,14 @@ async function submitCert() {
     const business_info = (form.merchant_shortname || '').trim()
       ? { merchant_shortname: (form.merchant_shortname || '').trim() }
       : null
-    // 结算规则：前端有就用前端的，后端有就用后端的；都没有时传 null，由后端在转发微信前填充
-    let settleRuleId = (config.wechatSettleRuleId || '').trim()
-    if (!settleRuleId) {
-      try {
-        const cfg = await getApplymentConfig()
-        const rid = cfg?.settle_rule_id ?? cfg?.settlement_info?.settle_rule_id
-        if (rid != null && rid !== '') settleRuleId = String(rid)
-      } catch (e) { /* 后端未实现 config 时忽略 */ }
-    }
-    const settlement_info = settleRuleId ? { settle_rule_id: settleRuleId } : null
-    if (!settleRuleId) {
-      console.warn('[进件] 前端与后端 config 均未提供 settle_rule_id，将不传 settlement_info，由后端在 POST /wechat-applyment/submit 转发微信前填充')
-    }
     const res = await submitApplyment({
       id: currentApplyment.value.id,
       applyment_id: currentApplyment.value.applyment_id ?? currentApplyment.value.id,
-      subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL',
+      subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL',
       subject_info,
       contact_info,
       bank_account_info,
       business_info,
-      settlement_info,
       business_category_locked: false
     })
     currentApplyment.value = res
@@ -1009,7 +950,7 @@ async function submitCert() {
 }
 
 async function saveDraft() {
-  // 保存当前表单为草稿（优先同步到远端，失败时回退到 wechat_applyment 接口）
+  // Only acknowledge completion after the server confirms every selected material.
   savingDraft.value = true
   try {
     const subject_info = isEnterprise.value ? {
@@ -1065,79 +1006,35 @@ async function saveDraft() {
     }
 
     const payload = {
-      applyment_id: 0,
-      subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL',
+      subject_type: isEnterprise.value ? 'SUBJECT_TYPE_ENTERPRISE' : 'SUBJECT_TYPE_INDIVIDUAL',
       subject_info,
       contact_info,
       bank_account_info,
       business_category_locked: false
     }
 
-    // 先尝试远端保存
-    try {
-      const resp = await createWechatApplymentDraft(payload)
-      if (resp) {
-        currentApplyment.value = resp
-        saveFormToStorage()
-        uni.showToast({ title: '草稿已保存（已同步至服务器）', icon: 'success' })
-        savingDraft.value = false
-        return
+    const rec = currentApplyment.value && Number(currentApplyment.value.is_draft) === 1
+      ? await updateDraft(currentApplyment.value.id || currentApplyment.value.applyment_id, payload)
+      : await createDraft(payload)
+    currentApplyment.value = rec
+    const applymentId = rec.id || rec.applyment_id
+    if (!applymentId) throw new Error('未获取服务端草稿编号')
+    const fields = ['idFrontList', 'idBackList', 'licenseList', 'legalFrontList', 'legalBackList']
+    const singleFields = ['idFront', 'idBack', 'license', 'legalFront', 'legalBack', 'agentAuth']
+    for (const field of fields) {
+      for (const file of (Array.isArray(form[field]) ? form[field] : [])) {
+        await uploadMedia({ file, media_type: FIELD_TO_MEDIA_TYPE[field] || field, applyment_id: applymentId })
       }
-    } catch (remoteErr) {
-      console.warn('远程保存草稿失败，将回退到本地保存', remoteErr)
     }
-
-    // 远端失败则回退到 wechat_applyment 接口
-    let rec = null
-    if (!currentApplyment.value) {
-      rec = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info, contact_info, bank_account_info })
-      currentApplyment.value = rec
-    } else if (Number(currentApplyment.value.is_draft) === 1) {
-      rec = await updateDraft(currentApplyment.value.id, { subject_info, contact_info, bank_account_info })
-      currentApplyment.value = rec
-    } else {
-      rec = await createDraft({ subject_type: isEnterprise.value ? 'SUBJECT_TYPE_COMPANY' : 'SUBJECT_TYPE_INDIVIDUAL', subject_info, contact_info, bank_account_info })
-      currentApplyment.value = rec
-    }
-
-    // 上传已选图片到远端媒体库（避免重复上传）
-    try {
-      const applymentId = currentApplyment.value && (currentApplyment.value.id || currentApplyment.value.applyment_id)
-      if (applymentId) {
-        // 获取已有媒体，避免重复上传
-        let existing = []
-        try { existing = await listMedia({ applyment_id: applymentId }) } catch (e) { existing = [] }
-
-        const fields = ['idFrontList','idBackList','licenseList','legalFrontList','legalBackList']
-        const singleFields = ['idFront','idBack','license','legalFront','legalBack','agentAuth']
-
-        for (const f of fields) {
-          const arr = Array.isArray(form[f]) ? form[f] : []
-          const mediaType = FIELD_TO_MEDIA_TYPE[f] || f
-          for (const fp of arr) {
-            try {
-              const path = typeof fp === 'string' ? fp : (fp?.path || fp?.url)
-              if (path) await uploadMedia({ file: path, media_type: mediaType, applyment_id: applymentId })
-            } catch (e) { console.warn('upload media failed for', f, fp, e) }
-          }
-        }
-
-        for (const f of singleFields) {
-          const fp = form[f]
-          if (!fp) continue
-          try {
-            const mediaType = FIELD_TO_MEDIA_TYPE[f] || f
-            await uploadMedia({ file: fp, media_type: mediaType, applyment_id: applymentId })
-          } catch (e) { console.warn('upload media failed for', f, fp, e) }
-        }
+    for (const field of singleFields) {
+      if (form[field]) {
+        await uploadMedia({ file: form[field], media_type: FIELD_TO_MEDIA_TYPE[field] || field, applyment_id: applymentId })
       }
-    } catch (e) { console.warn('batch upload media failed', e) }
-
+    }
     saveFormToStorage()
-    uni.showToast({ title: '草稿已保存（本地）', icon: 'success' })
-  } catch (e) {
-    console.error('保存草稿失败', e)
-    uni.showToast({ title: e && e.message ? e.message : '保存失败', icon: 'none' })
+    uni.showToast({ title: '草稿及所选材料已保存', icon: 'success' })
+  } catch {
+    uni.showModal({ title: '草稿或材料保存未完成', content: '材料上传未确认，请保留当前资料并重试；不能视为材料已保存或实名已核验。', showCancel: false })
   } finally {
     savingDraft.value = false
   }
