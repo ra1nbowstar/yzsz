@@ -150,7 +150,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getPointsBalance, getPointsLog, getRecycleRules } from '@/api/points.js'
+import { getPointsBalance, getPointsLog } from '@/api/points.js'
 import { getMerchantData, getMerchantPointsLogs } from '../../utils/merchant.js'
 
 // 当前选中的Tab
@@ -381,24 +381,10 @@ const switchTab = (tab) => {
   loadPointsLog()
 }
 
-/**
- * 加载积分回收规则
- */
-const loadRecycleRules = async () => {
-  try {
-    const res = await getRecycleRules()
-    if (res.success) {
-      console.log('积分回收规则:', res.data)
-    }
-  } catch (error) {
-    console.error('加载积分回收规则失败:', error)
-  }
-}
 
 onMounted(() => {
   loadPointsBalance()
   loadPointsLog()
-  loadRecycleRules()
 })
 
 /**

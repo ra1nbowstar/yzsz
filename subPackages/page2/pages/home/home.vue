@@ -127,8 +127,7 @@ import { getCharityNotices } from '../../config/charity.js'
 import { getSystemSentences } from '@/api/system.js'
 import { getUnreadCount } from '@/api/message.js'
 import { setTabBarBadge, removeTabBarBadge } from '@/utils/tabbar.js'
-import { getPublicWelfareBalance } from '@/api/charity.js'
-import { getPublicWelfareFlow } from '@/api/reports.js'
+import { getPublicWelfareSummary } from '@/api/charity.js'
 import config from '@/utils/config.js'
 
 const bannerList = ref([])
@@ -616,94 +615,18 @@ const getTimeAgo = (timestamp) => {
  * 加载公益播报（实时更新）
  */
 const loadCharityNotices = async () => {
-	try {
-		console.log('[首页] 开始实时加载公益播报')
-		
-		// 获取公益基金余额
-		let balance = 0
-		try {
-			const balanceRes = await getPublicWelfareBalance()
-			console.log('[首页] 公益基金余额响应:', balanceRes)
-			
-			// 解析响应数据
-			if (balanceRes.success && balanceRes.data) {
-				const data = balanceRes.data
-				if (data.balance !== undefined) {
-					balance = Number(data.balance)
-				}
-			} else if (balanceRes.data && balanceRes.data.balance !== undefined) {
-				balance = Number(balanceRes.data.balance)
-			} else if (balanceRes.balance !== undefined) {
-				balance = Number(balanceRes.balance)
-			}
-			
-			console.log('[首页] 解析后的公益基金余额:', balance)
-		} catch (balanceError) {
-			console.error('[首页] 获取公益基金余额失败:', balanceError)
-		}
-		
-		// 获取最近5条流水明细
-		let flows = []
-		try {
-			const flowRes = await getPublicWelfareFlow({
-				page: 1,
-				pageSize: 5
-			})
-			console.log('[首页] 公益基金流水响应:', flowRes)
-			
-			// 解析响应数据
-			if (flowRes && flowRes.data) {
-				if (Array.isArray(flowRes.data)) {
-					flows = flowRes.data
-				} else if (flowRes.data.list && Array.isArray(flowRes.data.list)) {
-					flows = flowRes.data.list
-				} else if (flowRes.data.flows && Array.isArray(flowRes.data.flows)) {
-					flows = flowRes.data.flows
-				} else if (flowRes.data.rows && Array.isArray(flowRes.data.rows)) {
-					flows = flowRes.data.rows
-				}
-			} else if (Array.isArray(flowRes)) {
-				flows = flowRes
-			}
-			
-			// 只取收入类型的流水（贡献）
-			flows = flows
-				.filter(item => {
-					const flowType = item.flow_type || item.type
-					return flowType === 'income' || flowType === 'in' || (item.change_amount && item.change_amount > 0)
-				})
-				.slice(0, 5) // 最多5条
-			
-			console.log('[首页] 解析后的流水明细:', flows)
-		} catch (flowError) {
-			console.error('[首页] 获取公益基金流水失败:', flowError)
-		}
-		
-		// 生成播报内容
-		let contentLines = []
-		
-		// 第一行：总余额
-		contentLines.push(`公益基金总余额：¥${balance.toFixed(4)}`)
-		
-		// 添加流水明细
-		if (flows.length > 0) {
-			flows.forEach(flow => {
-				const userName = maskName(flow.user_name || flow.name || flow.customer_name || '用户')
-				const timeAgo = getTimeAgo(flow.created_at || flow.create_time || flow.time)
-				const amount = Math.abs(flow.change_amount || flow.amount || 0)
-				contentLines.push(`${userName}${timeAgo}贡献¥${amount.toFixed(4)}`)
-			})
-		} else {
-			contentLines.push('暂无最新贡献记录')
-		}
-		
-		// 将内容转换为数组，每行一条
-		charityNotices.value = contentLines
-		console.log('[首页] 实时播报内容已更新，共', contentLines.length, '条')
-	} catch (error) {
-		console.error('[首页] 加载公益播报失败', error)
-		charityNotices.value = ['您的每一笔订单都在为公益事业贡献力量']
-	}
+  if (!uni.getStorageSync('token')) {
+    charityNotices.value = ['登录后可查看公益公示']
+    return
+  }
+  try {
+    const res = await getPublicWelfareSummary()
+    const summary = res.data
+    charityNotices.value = [`公益基金总余额：¥${summary.balance}`,
+      ...summary.items.map(item => `${item.text} ¥${item.amount}`)]
+  } catch {
+    charityNotices.value = ['公益公示暂不可用']
+  }
 }
 
 /**

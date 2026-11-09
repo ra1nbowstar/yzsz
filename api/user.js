@@ -104,7 +104,7 @@ export const decryptPhone = (data) => {
  * 请求体：{ code: string, user_id: number }
  * @param {String} code 手机号快速验证组件返回的 code（getPhoneNumber 回调 e.detail.code）
  * @param {String|Number} userId 用户 id，后端必填
- * @returns {Promise<{phone:string,message:string}>}
+ * @returns {Promise<{phone:string,mobile:string,message:string}>}
  */
 export const getPhone = (code, userId) => {
   if (!code || typeof code !== 'string' || !code.trim()) {
@@ -130,7 +130,7 @@ export const getPhone = (code, userId) => {
  */
 const getActualMobileFromBackend = async () => {
   const userInfo = uni.getStorageSync('userInfo') || {}
-  const mobile = String(userInfo.mobile || userInfo.phone || '').trim()
+  const mobile = String(userInfo.mobile || '').trim()
   if (/^\d{11}$/.test(mobile)) {
     return mobile
   }

@@ -371,7 +371,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { updateOrderStatus, shipOrder as shipOrderApi, getDeliveryList, getOrderDetail, confirmReceive } from '@/api/order.js'
+import { updateOrderStatus, shipOrder as shipOrderApi, getDeliveryList, getOrderDetail, syncMerchantReceipt } from '@/api/order.js'
 import { searchDeliveryList } from '@/data/delivery-list.js'
 import { auditRefund, getRefundProgress } from '../../api/refund.js'
 import config from '@/utils/config.js'
@@ -911,7 +911,7 @@ const doConfirmReceiveApi = async () => {
     uni.showLoading({ title: '处理中...', mask: true })
     console.log('[商户订单详情] 确认收货，订单号:', orderNo, '有流水号:', !!transactionIdStr)
     // 完成状态由服务端/微信回调驱动，不再由前端用 /order/status 直接推到 completed
-    await confirmReceive({
+    await syncMerchantReceipt({
       order_number: orderNo,
       transaction_id: transactionIdStr && transactionIdStr !== 'undefined' && transactionIdStr !== 'null' ? transactionIdStr : ''
     })
@@ -1410,7 +1410,7 @@ onShow(() => {
     const currentNo = (order.value && (order.value.orderNo || order.value.order_number)) || orderNumber.value
     if (!p.orderNo || !currentNo || p.orderNo !== currentNo) return
     console.log('[商户订单详情] onShow 兜底：调后端确认收货', p.orderNo)
-    confirmReceive({ order_number: p.orderNo, transaction_id: p.transactionId || undefined }).then(() => {
+    syncMerchantReceipt({ order_number: p.orderNo }).then(() => {
       try { uni.removeStorageSync('pending_confirm_receive') } catch (e) {}
       uni.showToast({ title: '收货已同步', icon: 'success' })
       loadOrderDetail(p.orderNo)
@@ -1426,7 +1426,7 @@ onShow(() => {
           confirmText: '重试',
           success: (res) => {
             if (res.confirm) {
-              confirmReceive({ order_number: p.orderNo, transaction_id: p.transactionId || undefined }).then(() => {
+              syncMerchantReceipt({ order_number: p.orderNo }).then(() => {
                 try { uni.removeStorageSync('pending_confirm_receive') } catch (e) {}
                 loadOrderDetail(p.orderNo)
                 uni.showToast({ title: '收货已同步', icon: 'success' })

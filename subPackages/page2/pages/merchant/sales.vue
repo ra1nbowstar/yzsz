@@ -202,8 +202,17 @@ const loadSalesData = async (period) => {
   try {
     console.log('[销售统计] 开始加载销售数据，周期:', period)
     
-    // 使用商户订单列表接口获取所有订单
-    const res = await getAllOrders({ status: 'all', page: 1, pageSize: 1000 })
+    const all = []
+    let page = 1
+    let hasMore = true
+    while (hasMore) {
+      const result = await getAllOrders({ status: 'all', page, pageSize: 100 })
+      const data = result.data || result
+      all.push(...data.list)
+      hasMore = data.pagination.has_more
+      page += 1
+    }
+    const res = { data: { list: all } }
     
     console.log('[销售统计] 商户订单接口响应:', res)
     

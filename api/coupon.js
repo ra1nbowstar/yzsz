@@ -3,6 +3,7 @@
  */
 
 import request from '@/utils/request.js'
+import { postCommerceAttempt } from '@/utils/commerce-attempt.js'
 
 /**
  * 发放优惠券给指定用户
@@ -14,30 +15,14 @@ import request from '@/utils/request.js'
  * @returns {Promise}
  */
 export const distributeCoupon = (params) => {
-  if (!params.user_id) {
-    return Promise.reject(new Error('用户ID不能为空'))
+  const faceValue = String(params.face_value_yuan ?? params.amount ?? '').trim()
+  if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?$/.test(faceValue) || Number(faceValue) <= 0) {
+    return Promise.reject(new Error('面额必须为正数且最多两位小数'))
   }
-  if (!params.amount || params.amount <= 0) {
-    return Promise.reject(new Error('优惠券金额必须大于0'))
-  }
-  
-  // 确保 user_id 是整数
-  const user_id = parseInt(params.user_id, 10)
-  const amount = parseFloat(params.amount)
-  const coupon_type = params.coupon_type || 'user'
-  const applicable_product_type = params.applicable_product_type || 'all'
-  
-  // 手动拼接query参数（兼容小程序环境，不使用URLSearchParams）
-  const queryParams = []
-  queryParams.push(`user_id=${encodeURIComponent(user_id)}`)
-  queryParams.push(`amount=${encodeURIComponent(amount)}`)
-  queryParams.push(`coupon_type=${encodeURIComponent(coupon_type)}`)
-  queryParams.push(`applicable_product_type=${encodeURIComponent(applicable_product_type)}`)
-  
-  const url = `/api/coupons/distribute?${queryParams.join('&')}`
-  
-  // POST请求，但参数在URL中（query参数），body为空
-  return request.post(url, {})
+  const body = { user_id: Number(params.user_id), face_value_yuan: faceValue,
+    quantity: params.quantity ?? 1, coupon_type: params.coupon_type || 'user',
+    applicable_product_type: params.applicable_product_type || 'all' }
+  return postCommerceAttempt(request, 'coupon-issue', '/api/coupons/issue', body, params.idempotency_key)
 }
 
 /**
@@ -67,7 +52,7 @@ export const distributeBatchCoupons = (params) => {
   if (body.user_ids.length === 0) {
     return Promise.reject(new Error('user_ids 无有效用户 ID'))
   }
-  return request.post('/api/coupons/distribute-batch', body)
+  return postCommerceAttempt(request, 'coupon-batch', '/api/coupons/distribute-batch', body, params.idempotency_key)
 }
 
 /**
@@ -185,7 +170,7 @@ export const exchangeCouponsApi = (count) => {
   if (count !== undefined && count !== null && count > 0) {
     url += `?count=${encodeURIComponent(count)}`
   }
-  return request.post(url, {})
+  return postCommerceAttempt(request, 'coupon-exchange', url, { count: count ?? null })
 }
 
 /**

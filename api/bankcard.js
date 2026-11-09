@@ -10,15 +10,14 @@ export const bindBankCard = (data) => {
   return request.post('/api/bankcard/bind', data)
 }
 
-/** 发送短信验证码（测试环境返回 123456）
- * @param {String} account_number 银行卡号
- * @param {String} [mobile] 接收验证码手机号（用户填写）
- */
-export const sendBankCardSms = (account_number, mobile) => {
-  let body = `account_number=${encodeURIComponent(account_number)}`
-  if (mobile && String(mobile).trim()) {
-    body += `&mobile=${encodeURIComponent(String(mobile).trim())}`
+/** SMS is sent to the authenticated account mobile, never a client-selected mobile. */
+export const sendBankCardSms = (account_number, purpose = 'bankcard_bind') => {
+  let deviceId = uni.getStorageSync('bankcard_device_id')
+  if (!deviceId) {
+    deviceId = `bankcard-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    uni.setStorageSync('bankcard_device_id', deviceId)
   }
+  const body = `account_number=${encodeURIComponent(account_number)}&device_id=${encodeURIComponent(deviceId)}&purpose=${encodeURIComponent(purpose)}`
   return request.post('/api/bankcard/sms/send', body, {
     header: { 'Content-Type': 'application/x-www-form-urlencoded' }
   })
@@ -35,8 +34,13 @@ export const getModifyStatus = () => {
 }
 
 /** 获取银行卡列表 */
-export const getBankCardList = () => {
-  return request.get('/api/bankcard/list')
+export const getBankCardList = async () => {
+  const response = await request.get('/api/bankcard/list')
+  return { ...response, data: (response.data || []).map(card => ({
+    ...card,
+    account_number_masked: card.account_number_masked || `**** ${card.account_number_tail || '****'}`,
+    is_default: card.is_default === true || card.is_default === 1
+  })) }
 }
 
 /** 查询绑定状态 */
@@ -55,6 +59,8 @@ export const getMyBankCards = () => {
 }
 
 /** 设置默认银行卡 */
-export const setDefaultBankCard = (data) => {
-  return request.post('/api/bankcard/default/set', data)
+export const setDefaultBankCard = ({ account_id }) => {
+  return request.post('/api/bankcard/default/set', `account_id=${encodeURIComponent(account_id)}`, {
+    header: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  })
 }

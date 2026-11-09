@@ -1,5 +1,5 @@
 <template>
-  <view class="weight-page">
+  <view v-if="platformAdmin" class="weight-page">
     <view class="section-card">
       <view class="field-head">
         <text class="field-label">直推奖励比例 rate</text>
@@ -27,6 +27,8 @@ import {
   getDirectReferralRewardRate,
   setDirectReferralRewardRate
 } from '@/api/fund-pool.js'
+import request from '@/utils/request.js'
+const platformAdmin = ref(false)
 
 const rate = ref(0.25)
 const rateInputText = ref('0.25')
@@ -109,8 +111,13 @@ const save = async () => {
   }
 }
 
-onMounted(() => {
-  reload({ silent: true })
+onMounted(async () => {
+  try {
+    const capability = await request.get('/user/capabilities')
+    platformAdmin.value = capability.platform_admin === true
+    if (platformAdmin.value) reload({ silent: true })
+    else uni.showToast({ title: '需要平台管理员权限', icon: 'none' })
+  } catch { platformAdmin.value = false }
 })
 </script>
 

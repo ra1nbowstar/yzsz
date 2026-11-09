@@ -98,7 +98,7 @@ export const getRewardHistory = (params = {}) => {
   // 如果没有提供 mobile，尝试从本地存储获取
   if (!params.mobile) {
     const userInfo = uni.getStorageSync('userInfo') || {}
-    params.mobile = userInfo.mobile || userInfo.phone
+    params.mobile = userInfo.mobile || undefined
   }
   // 兼容 pageSize 参数，转换为 size
   if (params.pageSize && !params.size) {

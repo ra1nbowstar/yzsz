@@ -507,8 +507,8 @@ const confirmChangePassword = async () => {
 		return
 	}
 	
-	if (newPassword.value.length < 6) {
-		uni.showToast({ title: '新密码长度不能少于6位', icon: 'none' })
+    if (newPassword.value.length < 8 || newPassword.value.length > 72) {
+        uni.showToast({ title: '新密码长度须为8至72位', icon: 'none' })
 		return
 	}
 	
@@ -527,7 +527,7 @@ const confirmChangePassword = async () => {
 	
 	try {
 		// 调用修改密码接口
-		await updateUserPassword(oldPassword.value.trim(), newPassword.value.trim())
+        await updateUserPassword(oldPassword.value, newPassword.value)
 		
 		uni.hideLoading()
 		

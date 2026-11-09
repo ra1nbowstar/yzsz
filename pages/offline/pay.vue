@@ -87,29 +87,7 @@
           </view>
         </view>
 
-        <!-- 积分抵扣（非会员商品可用，1积分=1元） -->
-        <view v-if="!disablePoints" class="points-section">
-          <view class="section-header">
-            <text class="section-title">积分抵扣</text>
-            <text class="available-points">可用 {{ userPointsBalance }} 积分</text>
-          </view>
-          <view class="points-row">
-            <text class="input-label">使用积分</text>
-            <input
-              class="points-input"
-              type="digit"
-              v-model.number="pointsToUse"
-              placeholder="0"
-              :disabled="disablePoints || userPointsBalance === 0 || maxPointsDiscount <= 0"
-              @input="onPointsInput"
-            />
-            <button class="use-max-btn" type="button" @tap="useMaxPoints" :disabled="disablePoints || userPointsBalance === 0 || maxPointsDiscount <= 0">全部使用</button>
-          </view>
-          <view class="points-tips">
-            <text class="tip-item">• 最多可抵扣 {{ formatAmount(maxPointsDiscount) }} 积分（1积分=1元，最多抵扣原价的 50%）</text>
-            <text class="tip-item">• 非会员商品可使用积分</text>
-          </view>
-        </view>
+        <view class="points-section">线下积分抵扣暂不可用，需先配置服务端权威抵扣规则。</view>
 
         <!-- 支付方式（与积分确认订单的配送方式样式一致） -->
         <view class="delivery-way-section">
@@ -208,7 +186,6 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getPendingReferrer, clearPendingReferrer } from '@/utils/referral.js'
 import { getOfflineOrderDetail, getOrderDetail, offlinePayUnified } from '@/api/order.js'
 import { getMyCoupons } from '@/api/coupon.js'
-import { getPointsBalance } from '@/api/points.js'
 import { bindReferrer, getMobileByUserId } from '@/api/user.js'
 import {
   pickWechatPayParamsFromUnifiedResponse,
@@ -239,20 +216,11 @@ const couponLoading = ref(false)
 const selectedCouponIds = ref([])   // 选中的优惠券 ID 数组
 const selectedCouponCount = ref(0)   // 选中的张数
 const loadingCoupons = ref(false)    // 优惠券加载状态
-const disablePoints = ref(false) // 是否禁用积分抵扣
+const disablePoints = ref(true) // No authoritative offline points policy exists.
 const orderAmount = computed(() => Number(orderData.value?.total_amount ?? orderData.value?.amount ?? 0))
-const userPointsBalance = ref(0)
 const pointsToUse = ref(0)
 const orderEarnPoints = computed(() => Number(orderData.value?.earn_points ?? orderData.value?.earnPoints ?? 0))
-const maxPointsDiscount = computed(() => {
-  if (disablePoints.value) return 0
-  const amt = orderAmount.value
-  if (amt <= 0) return 0
-  // 最多抵扣「原价的 50%」，且不能超过用户积分余额
-  const half = amt * 0.5
-  return Math.min(userPointsBalance.value, half)
-})
-const pointsDiscount = computed(() => Math.min(pointsToUse.value, maxPointsDiscount.value))
+const pointsDiscount = computed(() => 0)
 const actualPayAmount = computed(() => Math.max(0, orderAmount.value - couponDiscount.value - pointsDiscount.value))
 const rawResponseText = computed(() => {
   const r = rawOrderResponse.value
@@ -307,44 +275,10 @@ function clearCoupon() {
   selectedCoupon.value = null
 }
 
-function onPointsInput(e) {
-  const v = e.detail?.value ?? e.target?.value ?? ''
-  const n = parseInt(String(v).replace(/\D/g, ''), 10)
-  if (isNaN(n) || n < 0) {
-    pointsToUse.value = 0
-    return
-  }
-  pointsToUse.value = Math.min(n, maxPointsDiscount.value)
-}
-function useMaxPoints() {
-  pointsToUse.value = maxPointsDiscount.value
-}
 // 新增：优惠券滑块变化处理
 const onCouponCountChange = (e) => {
   selectedCouponCount.value = e.detail.value
 }
-/**
- * 加载用户积分余额
- */
-async function loadUserPoints() {
-  const token = uni.getStorageSync('token')
-  if (!token) return
-  try {
-    const res = await getPointsBalance()
-    const pts = res.data?.total_points ?? res.data?.member_points ?? res.data?.points ?? res.data?.balance ?? 0
-    userPointsBalance.value = Number(pts)
-    if (pointsToUse.value > userPointsBalance.value || pointsToUse.value > maxPointsDiscount.value) {
-      pointsToUse.value = Math.min(userPointsBalance.value, maxPointsDiscount.value)
-    }
-  } catch (e) {
-    console.warn('[线下支付] 加载积分失败', e)
-    userPointsBalance.value = 0
-  }
-}
-
-watch(maxPointsDiscount, (maxVal) => {
-  if (pointsToUse.value > maxVal) pointsToUse.value = maxVal
-})
 
 // 线下支付只保留微信支付
 const paymentMethods = [
@@ -584,7 +518,6 @@ const loadOrder = async () => {
       console.log('[线下支付] 已置 loading=false，orderData 已设置，应显示订单内容')
     })
     loadCoupons()
-    loadUserPoints()
 
     // 检查订单状态（支持数字 0/1 表示待支付）
     if (!isPendingStatus(order.status)) {

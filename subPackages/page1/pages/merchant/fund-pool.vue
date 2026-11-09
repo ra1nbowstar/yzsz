@@ -1,5 +1,5 @@
 <template>
-  <view class="fund-pool-page">
+  <view v-if="platformAdmin" class="fund-pool-page">
     <!-- 页面标题 -->
     <view class="page-header">
       <view class="page-header-text">
@@ -70,6 +70,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { getFundPoolAllocations, updateFundPoolAllocations } from '../../api/fund-pool.js'
+import request from '@/utils/request.js'
+const platformAdmin = ref(false)
 
 // 资金池配置映射
 const poolConfig = {
@@ -280,8 +282,13 @@ const goToMyFunds = () => {
   })
 }
 
-onMounted(() => {
-  loadData()
+onMounted(async () => {
+  try {
+    const capability = await request.get('/user/capabilities')
+    platformAdmin.value = capability.platform_admin === true
+    if (platformAdmin.value) loadData()
+    else uni.showToast({ title: '需要平台管理员权限', icon: 'none' })
+  } catch { platformAdmin.value = false }
 })
 </script>
 

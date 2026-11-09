@@ -26,7 +26,7 @@
         </view>
         <input class="input" v-model="bank.bank_name" placeholder="开户支行全称（选完银行与地区后可从列表选择）" />
         <input class="input" v-model="bank.bank_branch_id" placeholder="联行号（选支行后自动带出，可选填）" />
-        <input class="input" v-model="bank.sms_mobile" type="number" maxlength="11" placeholder="接收验证码手机号（必填）" />
+        <text>验证码发送至当前登录账号绑定手机号</text>
         <view class="sms-row">
           <input class="input sms-input" v-model="bank.sms_code" placeholder="短信验证码" />
           <view
@@ -303,6 +303,7 @@ const bank = reactive({
 const smsSending = ref(false)
 const smsCountdown = ref(0)
 let smsTimer = null
+const smsSession = ref(null)
 
 // UI state
 const step = ref(1) // 1: bind form, 2: bound view
@@ -323,31 +324,20 @@ async function loadBankStatus() {
   try {
     const statusRes = await getBankCardStatus().catch(() => null)
     const myRes = await getMyBankCards().catch(() => null)
-    const cards = myRes?.data ?? myRes?.list ?? (Array.isArray(myRes) ? myRes : [])
-    const first = Array.isArray(cards) && cards.length > 0 ? cards[0] : null
-    const isBound = statusRes?.data?.bound ?? statusRes?.bound ?? !!first
-    if (isBound && first) {
+    const first = myRes?.data ?? null
+    const isBound = statusRes?.data?.is_bound === true
+    if (isBound && first?.has_bankcard && !first.error) {
       boundBank.value = first
-      boundTail.value = String(first.account_number || first.number || '').slice(-4)
+      boundTail.value = first.account_number_tail || ''
       boundBankName.value = first.bank_name || first.account_bank || first.name || ''
       step.value = 2
     } else {
-      const local = uni.getStorageSync('merchant_bound_bank')
-      if (local) {
-        boundBank.value = local
-        boundTail.value = String(local.number || local.account_number || '').slice(-4)
-        boundBankName.value = local.name || local.account_bank || ''
-        step.value = 2
-      }
+      boundBank.value = null
+      step.value = 1
     }
   } catch (e) {
-    const local = uni.getStorageSync('merchant_bound_bank')
-    if (local) {
-      boundBank.value = local
-      boundTail.value = String(local.number || '').slice(-4)
-      boundBankName.value = local.name || ''
-      step.value = 2
-    }
+    boundBank.value = null
+    step.value = 1
   }
 }
 
@@ -400,12 +390,13 @@ function onSendSmsTap() {
 async function sendSmsCode() {
   const num = (bank.account_number || '').replace(/\s+/g, '')
   if (!validateBank(num)) { uni.showToast({ title: '请先输入正确的银行卡号', icon: 'none' }); return }
-  const mobile = String(bank.sms_mobile || '').replace(/\s+/g, '')
-  if (!mobile || mobile.length !== 11) { uni.showToast({ title: '请填写11位接收验证码手机号', icon: 'none' }); return }
   smsSending.value = true
   smsCountdown.value = 0
   try {
-    await sendBankCardSms(num, mobile)
+    const purpose = modifyMode.value ? 'bankcard_modify' : 'bankcard_bind'
+    const res = await sendBankCardSms(num, purpose)
+    if (!res?.data?.session_id) throw new Error('未获取短信验证会话')
+    smsSession.value = { id: res.data.session_id, number: num, purpose }
     uni.showToast({ title: '验证码已发送', icon: 'success' })
     smsCountdown.value = 60
     smsTimer = setInterval(() => {
@@ -428,7 +419,10 @@ async function bindCard() {
   const num = (bank.account_number || '').replace(/\s+/g, '')
   if (!validateBank(num)) { uni.showToast({ title: '请输入正确的银行卡号', icon: 'none' }); return }
   if (!bank.sms_code || bank.sms_code.length < 4) { uni.showToast({ title: '请输入短信验证码', icon: 'none' }); return }
-  if (!bank.sms_mobile || String(bank.sms_mobile).replace(/\s+/g, '').length !== 11) { uni.showToast({ title: '请填写接收验证码手机号', icon: 'none' }); return }
+  const purpose = modifyMode.value ? 'bankcard_modify' : 'bankcard_bind'
+  if (!smsSession.value || smsSession.value.number !== num || smsSession.value.purpose !== purpose) {
+    uni.showToast({ title: '请重新获取当前银行卡验证码', icon: 'none' }); return
+  }
   if (!bank.account_name || !bank.account_bank) { uni.showToast({ title: '请填写开户人姓名和开户银行', icon: 'none' }); return }
 
   submitting.value = true
@@ -441,7 +435,7 @@ async function bindCard() {
         new_bank_name: bank.bank_name || bank.account_bank,
         bank_address_code: bank.bank_address_code || '110105',
         bank_branch_id: bank.bank_branch_id || '',
-        sms_mobile: String(bank.sms_mobile || '').replace(/\s+/g, ''),
+        session_id: smsSession.value.id,
         sms_code: bank.sms_code
       }
       await applyModifyBankCard(payload)
@@ -455,7 +449,7 @@ async function bindCard() {
         bank_name: bank.bank_name || bank.account_bank,
         bank_address_code: bank.bank_address_code || '110105',
         bank_branch_id: bank.bank_branch_id || '',
-        sms_mobile: String(bank.sms_mobile || '').replace(/\s+/g, ''),
+        session_id: smsSession.value.id,
         sms_code: bank.sms_code
       }
       await bindBankCard(payload)
@@ -464,6 +458,7 @@ async function bindCard() {
     emit('refreshed')
     await loadBankStatus()
     bank.sms_code = ''
+    smsSession.value = null
   } catch (e) {
     uni.showToast({ title: e?.message || '操作失败', icon: 'none' })
   } finally {

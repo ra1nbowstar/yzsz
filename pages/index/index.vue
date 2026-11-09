@@ -71,7 +71,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { wechatLogin, phonePasswordLogin, checkIsMerchant, updateProfile, updateUserAvatar, updateUserName } from '@/api/auth.js'
-import { bindReferrer, getUserInfo, getPhone, updateMobile, getMobileByUserId, refreshUserInfo } from '@/api/user.js'
+import { bindReferrer, getUserInfo, updateMobile, getMobileByUserId, refreshUserInfo } from '@/api/user.js'
 import { onUserLogin, setStorage } from '@/utils/storage.js'
 import { saveAuth, saveWechatSession } from '@/utils/auth.js'
 import { WECHAT_APPID } from '@/utils/config.js'
@@ -97,7 +97,6 @@ const consumePostLoginRedirect = () => {
 
 const phone = ref('')
 const password = ref('')
-const nickname = ref('')
 const inviteCode = ref('')
 const isKeepLogin = ref(false)
 const tip = ref('')
@@ -359,7 +358,7 @@ const onProfileSetupConfirm = async () => {
 	const avatarUrl = profileSetupAvatarUrl.value
 	const nickName = (profileSetupNickname.value || '').trim()
 	const userId = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
-	let mobile = userInfo.mobile || userInfo.phone
+    let mobile = userInfo.mobile
 
 	uni.showLoading({ title: '更新中...', mask: true })
 	try {
@@ -428,7 +427,7 @@ const handleLogin = async () => {
 			throw new Error('登录函数未正确导入')
 		}
 		
-		const res = await phonePasswordLogin(phone.value, password.value, nickname.value.trim())
+        const res = await phonePasswordLogin(phone.value, password.value)
 		// 登录接口响应
 		
 		// 保存登录信息（token 使用统一方法保存）
@@ -694,14 +693,14 @@ const onGetPhoneNumber = async (e) => {
 		if (res.user) {
 			userInfo = {
 				...res.user,
-				mobile: res.user.mobile || res.user.phone || '', 
-				phone: res.user.phone || res.user.mobile || ''
+                mobile: res.user.mobile || '',
+                phone: res.user.phone || ''
 			}
-		} else if (res.id || res.user_id || res.userId) {
-			userInfo = {
-				...res,
-				mobile: res.mobile || res.phone || '',
-				phone: res.phone || res.mobile || ''
+        } else if (res.uid || res.id || res.user_id || res.userId) {
+            userInfo = {
+                ...res,
+                mobile: res.mobile || '',
+                phone: res.phone || ''
 			}
 		}
 
@@ -722,9 +721,9 @@ const onGetPhoneNumber = async (e) => {
 			}
 		}
 		// 查询是否商户（如果有手机号）
-		if (userInfo.mobile || userInfo.phone) {
+        if (userInfo.mobile) {
 			try {
-				const mobile = userInfo.mobile || userInfo.phone
+                const mobile = userInfo.mobile
 				const isMerchant = await checkIsMerchant(mobile)
 				// 布尔接口只做兜底：详情接口没给 1/2 时才填
 				if (!userInfo.is_merchant && !userInfo.isMerchant) {
@@ -750,26 +749,10 @@ const onGetPhoneNumber = async (e) => {
 		uni.setStorageSync('userInfo', userInfo)
 		onUserLogin(userInfo)
 		
-		const uid = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
-		// 普通用户不再调用管理员接口 /user/mobile 反查手机号
-		let profileMobile = (userInfo.mobile || userInfo.phone || '').trim()
-		if (/^\d{11}$/.test(profileMobile)) {
-			console.log('[手机号快捷登录] 用户手机号已为 11 位（get-phone 流程）')
-		} else if (uid && phoneCode) {
-			// 兜底：后端未返回手机号时，前端用 phone_code 调 get-phone 取手机号（传 id 供后端关联用户）
-			try {
-				const getPhoneRes = await getPhone(phoneCode, uid)
-				const newMobile = (getPhoneRes && (getPhoneRes.phone || getPhoneRes.data?.phone)) ? String(getPhoneRes.phone || getPhoneRes.data.phone).trim() : ''
-				if (/^\d{11}$/.test(newMobile)) {
-					// get-phone 只更新 phone 字段；登录手机号 mobile 需走专用改号流程
-					userInfo.phone = newMobile
-					uni.setStorageSync('userInfo', userInfo)
-					console.log('[手机号快捷登录] 兜底通过 get-phone 获取并更新 phone')
-				}
-			} catch (err) {
-				console.warn('[手机号快捷登录] get-phone 兜底失败:', err)
-			}
-		}
+        // phone_code 已由登录接口消费；不可重复兑换或将 phone 当作登录身份。
+        if (!userInfo.mobile) {
+            throw new Error('登录未返回账号手机号，请重新登录')
+        }
 		
 		// 保存微信Session信息
 		let openidToSave = null
@@ -805,12 +788,12 @@ const onGetPhoneNumber = async (e) => {
 		
 		// 尝试绑定推荐人
 		if (inviteCode.value.trim()) {
-			await tryBindReferrer(userInfo.mobile || userInfo.phone)
+            await tryBindReferrer(userInfo.mobile)
 		}
 		
 		// 使用 mobile 查询用户详情，检查status
 		try {
-			const mobile = userInfo.mobile || userInfo.phone
+            const mobile = userInfo.mobile
 			if (mobile) {
 				// 查询用户详情
 				const userDetailRes = await getUserInfo(mobile)
@@ -977,15 +960,15 @@ const handleWeChatLogin = async () => {
 						if (res.user) {
 							userInfo = {
 								...res.user,
-								mobile: res.user.mobile || res.user.phone || '', // 微信登录可能没有手机号
-								phone: res.user.phone || res.user.mobile || ''
+                                mobile: res.user.mobile || '',
+                                phone: res.user.phone || ''
 							}
-						} else if (res.id || res.user_id || res.userId) {
+                        } else if (res.uid || res.id || res.user_id || res.userId) {
 							// 如果返回数据直接在 res 中，而不是 res.user
 							userInfo = {
 								...res,
-								mobile: res.mobile || res.phone || '',
-								phone: res.phone || res.mobile || ''
+                                mobile: res.mobile || '',
+                                phone: res.phone || ''
 							}
 						}
 						

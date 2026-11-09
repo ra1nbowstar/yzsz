@@ -1,4 +1,5 @@
 import request from '@/utils/request.js'
+import { postCommerceAttempt } from '@/utils/commerce-attempt.js'
 
 /**
  * 获取允许转正的资金池列表
@@ -50,7 +51,7 @@ export const setDirectReferralRewardRate = (rate) => {
  * POST /api/fund-pools/transform-to-coupon
  * Query：pool_type, user_id, amount（整数元，后端按多张 1 元券发放）, coupon_type, applicable_product_type, remark
  */
-export const transformToCoupon = (params) => {
+export const transformToCoupon = async (params) => {
   const pairs = []
   const add = (k, v) => {
     if (v == null) return
@@ -66,5 +67,12 @@ export const transformToCoupon = (params) => {
   if (params.remark != null && params.remark !== '') add('remark', params.remark)
   const query = pairs.join('&')
   const url = '/api/fund-pools/transform-to-coupon' + (query ? `?${query}` : '')
-  return request.post(url, {})
+  const confirmsSuccess = result => result?.success === true && result.ok !== false &&
+    (result.code == null || [0, 200, 'OK'].includes(result.code)) &&
+    Array.isArray(result.data?.coupon_ids) && result.data.coupon_ids.length > 0 &&
+    result.data.coupon_ids.every(id => Number.isInteger(id) && id > 0) &&
+    result.data.count === result.data.coupon_ids.length &&
+    result.data.count === Number(params.amount) && result.data.amount_per_coupon === 1 &&
+    result.data.total_amount === Number(params.amount)
+  return postCommerceAttempt(request, 'fund-transform', url, {}, undefined, confirmsSuccess)
 }

@@ -574,8 +574,8 @@ const resetPassword = async () => {
 		return
 	}
 	
-	if (!newPassword.value || newPassword.value.trim().length < 6) {
-		uni.showToast({ title: '密码长度至少6位', icon: 'none' })
+    if (!newPassword.value || newPassword.value.length < 8 || newPassword.value.length > 72) {
+        uni.showToast({ title: '密码长度须为8至72位', icon: 'none' })
 		return
 	}
 	
@@ -592,7 +592,7 @@ const resetPassword = async () => {
 				try {
 					await adminResetPwd({
 						mobile: userInfo.value.mobile,
-						new_password: newPassword.value.trim()
+                        new_password: newPassword.value
 					})
 					
 					// 清空密码输入

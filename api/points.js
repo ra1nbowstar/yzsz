@@ -223,18 +223,13 @@ export const earnPointsFromOrder = (data) => {
  * @param {String} data.type 回收类型 'purchase' | 'discount'
  * @returns {Promise}
  */
-export const recyclePoints = (data) => {
-  console.log('[Mock] 积分回收:', data)
-  return Promise.resolve({ code: 200, message: '积分回收模拟成功' })
-}
+export const recyclePoints = () => Promise.reject(new Error('积分回收政策尚未配置，暂不可用'))
 
 /**
  * 获取积分回收规则（兼容旧版本）
  * @returns {Promise}
  */
-export const getRecycleRules = () => {
-  return request.get('/points/recycle-rules')
-}
+export const getRecycleRules = () => Promise.reject(new Error('积分回收规则尚未发布，暂不可用'))
 
 /**
  * 查询用户点数汇总（累计/已用/剩余）
