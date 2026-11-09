@@ -25,16 +25,18 @@ export const getAvatarUrl = (avatarPath) => {
   
   // 如果是字符串，尝试解析JSON（处理 "[\"/path/to/image.jpg\"]" 格式）
   if (typeof avatarPath === 'string') {
-    // 检查是否是JSON字符串数组格式
-    if (avatarPath.trim().startsWith('[') && avatarPath.trim().endsWith(']')) {
+    // 以 [ 开头一律按 JSON 数组处理：解析失败或空数组都回退默认图，
+    // 避免把 "[]"、"[abc]" 这类原始串拼成坏 URL
+    if (avatarPath.trim().startsWith('[')) {
       try {
         const parsed = JSON.parse(avatarPath)
         if (Array.isArray(parsed) && parsed.length > 0) {
           avatarPath = parsed[0]
+        } else {
+          return '/static/logo.png'
         }
       } catch (e) {
-        // 解析失败，继续使用原始字符串
-        console.warn('[头像处理] JSON解析失败，使用原始字符串:', e)
+        return '/static/logo.png'
       }
     }
   }

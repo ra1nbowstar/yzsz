@@ -40,13 +40,14 @@
 				<text class="asset-value">{{ displayPoints }}</text>
 				<text class="asset-label">积分余额</text>
 			</view>
-			<view class="asset-divider"></view>
-			<view class="asset-item">
+			<!-- 暂时隐藏咯哒蛋/咯哒券,保留代码 -->
+			<view v-if="false" class="asset-divider"></view>
+			<view v-if="false" class="asset-item">
 				<text class="asset-value">{{ kadaEggCount }}</text>
 				<text class="asset-label">咯哒蛋</text>
 			</view>
-			<view class="asset-divider"></view>
-			<view class="asset-item">
+			<view v-if="false" class="asset-divider"></view>
+			<view v-if="false" class="asset-item">
 				<text class="asset-value">{{ kadaCouponCount }}</text>
 				<text class="asset-label">咯哒券</text>
 			</view>
@@ -105,7 +106,8 @@
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
-			<view class="menu-item" @tap="goToPage('/subPackages/page2/pages/rights/center')">
+			<!-- 暂时隐藏权益中心入口,保留代码 -->
+			<view v-if="false" class="menu-item" @tap="goToPage('/subPackages/page2/pages/rights/center')">
 				<view class="menu-left">
 					<text class="iconfont icon-wodejiangli menu-icon menu-icon-red"></text>
 					<text class="menu-text">权益中心</text>

@@ -71,8 +71,8 @@
 			</view>
 		</view>
 
-		<!-- 最近动态 -->
-		<view class="activity-section">
+		<!-- 最近动态（新接口不返回该数据，暂时隐藏） -->
+		<view v-if="false" class="activity-section">
 			<view class="section-title">最近动态</view>
 			<view class="activity-list">
 				<view class="activity-item" v-for="(item, index) in member.activities" :key="index">
@@ -96,7 +96,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { getUserInfo, getUniLevel, getReferDirect, getReferTeam, getTeamMemberDetail } from '@/api/user.js'
+import { getTeamMemberDetail } from '@/api/user.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
 import { getLevelIcon, getLevelText } from '@/utils/level.js'
 
@@ -173,146 +173,6 @@ const member = ref({
 	status: 0,
 	new_status: 0
 })
-
-
-/**
- * 加载会员详情
- */
-const loadMemberDetail = async (mobile) => {
-	if (!mobile) {
-		uni.showToast({ title: '缺少手机号', icon: 'none' })
-		return
-	}
-	
-	// 后端暂无「团队成员详情」接口；非本人不能调 /user/info（会 403），先降级展示
-	const storedUserInfo = uni.getStorageSync('userInfo') || {}
-	const selfMobile = storedUserInfo.mobile || storedUserInfo.phone
-	if (String(selfMobile) !== String(mobile)) {
-		member.value = {
-			id: mobile,
-			avatar: '/static/logo.png',
-			nickname: '',
-			level: 0,
-			unilevel: 0,
-			referrer: '无',
-			referrerData: null,
-			contribution: 0,
-			orderCount: 0,
-			teamCount: 0,
-			directCount: 0,
-			teamPerformance: 0,
-			activities: [],
-			mobile,
-			status: 0,
-			new_status: 0
-		}
-		uni.showToast({ title: '成员详情接口暂未开放', icon: 'none', duration: 2500 })
-		return
-	}
-	
-	try {
-		uni.showLoading({ title: '加载中...' })
-		
-		// 1. 获取用户基本信息
-		const userInfoRes = await getUserInfo(mobile)
-		const userData = userInfoRes.data || userInfoRes
-		
-		console.log('[会员详情] 用户信息:', userData)
-		
-		// 2. 获取联创等级
-		let unilevel = 0
-		try {
-			const uniLevelRes = await getUniLevel(mobile)
-			unilevel = uniLevelRes.data?.unilevel || uniLevelRes.unilevel || 0
-		} catch (error) {
-			console.error('加载联创等级失败', error)
-		}
-		
-		// 3. 获取直推人数
-		let directCount = 0
-		try {
-			const directRes = await getReferDirect({ mobile, page: 1, size: 1 })
-			directCount = directRes.data?.total || directRes.total || 0
-		} catch (error) {
-			console.error('获取直推人数失败', error)
-		}
-		
-		// 4. 获取团队总人数
-		let teamCount = 0
-		try {
-			const teamRes = await getReferTeam({ mobile, max_layer: 6 })
-			const teamList = teamRes.data?.rows || teamRes.rows || []
-			// 排除自己（layer=0的成员，即直推），返回团队总人数
-			teamCount = teamList.filter(m => m.layer !== 0).length
-		} catch (error) {
-			console.error('获取团队总人数失败', error)
-		}
-		
-		// 5. 处理头像URL
-		let avatarUrl = '/static/logo.png'
-		if (userData.avatar_path) {
-			avatarUrl = getAvatarUrl(userData.avatar_path)
-		} else if (userData.avatar) {
-			avatarUrl = getAvatarUrl(userData.avatar)
-		}
-		
-		// 6. 推荐人信息：直接用 /user/info 返回的 referrer（后端已内嵌 mobile/name/member_level），
-		//    不再用推荐人手机号二次调 /user/info（普通用户会 403）
-		let referrerData = null
-		if (userData.referrer && typeof userData.referrer === 'object' && userData.referrer !== null) {
-			// 如果没有手机号，但有referrer对象，直接使用
-			let fallbackAvatarPath = userData.referrer.avatar_path || userData.referrer.avatar || ''
-			// 处理JSON字符串数组格式
-			if (fallbackAvatarPath && typeof fallbackAvatarPath === 'string') {
-				if (fallbackAvatarPath.trim().startsWith('[') && fallbackAvatarPath.trim().endsWith(']')) {
-					try {
-						const parsed = JSON.parse(fallbackAvatarPath)
-						if (Array.isArray(parsed) && parsed.length > 0) {
-							fallbackAvatarPath = parsed[0]
-						}
-					} catch (e) {
-						console.warn('[会员详情] 推荐人头像JSON解析失败:', e)
-					}
-				}
-			}
-			referrerData = {
-				mobile: userData.referrer.mobile || '',
-				name: userData.referrer.name || '',
-				member_level: userData.referrer.member_level || 0,
-				avatar_path: fallbackAvatarPath,
-				avatar: fallbackAvatarPath
-			}
-			console.log('[会员详情] 从referrer对象获取推荐人数据:', referrerData)
-		}
-		
-		// 7. 更新会员数据
-		member.value = {
-			id: userData.uid || userData.id || userData.user_id || mobile,
-			avatar: avatarUrl,
-			nickname: userData.name || userData.nickname || '未设置昵称',
-			level: userData.member_level || userData.level || 0,
-			unilevel: unilevel,
-			referrer: referrerData ? (referrerData.name || referrerData.mobile) : (userData.referrer_name || userData.referrer || '无'),
-			referrerData: referrerData,
-			contribution: parseFloat(userData.total_contribution || userData.contribution || 0),
-			orderCount: parseInt(userData.order_count || userData.orderCount || 0),
-			teamCount: teamCount,
-			directCount: directCount,
-			teamPerformance: parseFloat(userData.team_performance || userData.teamPerformance || 0),
-			activities: [], // 动态数据暂时为空，后续可以添加接口获取
-			mobile: mobile || userData.mobile || userData.phone || '',
-			status: userData.status || userData.new_status || 0,
-			new_status: userData.new_status || userData.status || 0
-		}
-		
-		console.log('[会员详情] 加载完成:', member.value)
-	} catch (error) {
-		console.error('加载会员详情失败', error)
-		uni.showToast({ title: error.message || '加载失败', icon: 'none' })
-	} finally {
-		uni.hideLoading()
-	}
-}
 
 
 /**
