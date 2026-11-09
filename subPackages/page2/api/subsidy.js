@@ -72,7 +72,7 @@ export const getPointsValue = () => {
  */
 export const adjustPointsValue = (points_value, auto_clear = true) => {
   const queryParams = []
-  queryParams.push(`admin_key=${encodeURIComponent('admin2025')}`)
+  // 管理员鉴权依赖 Bearer Token，不再传后台口令
   if (points_value !== undefined && points_value !== null) {
     queryParams.push(`points_value=${encodeURIComponent(points_value)}`)
   }

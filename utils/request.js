@@ -191,18 +191,33 @@ class Request {
               ...responseData
             })
           } else if (res.statusCode === 401) {
-            // Token 过期/未登录（后端返回 401 时触发）
+            // 401 分级：游客静默（不提示、不跳转）；已登录 token 过期才提示并引导登录
+            const token = uni.getStorageSync('token')
+            if (!token) {
+              reject({ code: 401 })
+              return
+            }
             this.handleTokenExpired()
             reject({ code: 401, msg: '登录已过期，请重新登录' })
           } else if (res.statusCode === 404) {
             // 404错误不显示提示，直接reject（由调用方决定是否静默处理）
             reject({ code: 404, statusCode: 404, message: '接口不存在' })
           } else if (res.statusCode === 403) {
-            // 无权限（角色/归属失败）：提示无权限，不自动重试
-            const rawMsg = responseData.detail || responseData.message || responseData.msg || '无权限'
-            const errorMsg = typeof rawMsg === 'string' ? rawMsg : (Array.isArray(rawMsg) && rawMsg.length ? String(rawMsg[0]) : '无权限')
-            this.handleError(errorMsg)
-            reject({ code: 403, statusCode: 403, message: errorMsg, detail: responseData.detail, ...responseData })
+            // 权限不足：优先按后端稳定业务码 code 判断，detail 兜底
+            const bizCode = responseData.code || ''
+            const rawMsg = responseData.detail || responseData.message || responseData.msg || ''
+            const errorMsg = typeof rawMsg === 'string' ? rawMsg : (Array.isArray(rawMsg) && rawMsg.length ? String(rawMsg[0]) : '')
+            let tip = '当前账号无管理员权限'
+            if (bizCode === 'SELF_RESOURCE_ONLY' || errorMsg === '只能查询本人信息') {
+              tip = '无权查看其他用户资料'
+            } else if (bizCode === 'TEAM_MEMBER_ACCESS_DENIED' || errorMsg.indexOf('团队成员') >= 0) {
+              tip = '无权查看该团队成员'
+            } else if (bizCode === 'PLATFORM_ADMIN_REQUIRED' || errorMsg.indexOf('管理员') >= 0) {
+              tip = '当前账号无管理员权限'
+            }
+            this.handleError(tip)
+            // 错误体顶层可能带 code，先展开再覆盖，避免它把 HTTP 语义的 403 挡掉
+            reject({ ...responseData, code: 403, statusCode: 403, message: errorMsg || tip, detail: responseData.detail, bizCode })
           } else if (res.statusCode === 409) {
             // 状态/幂等/库存冲突：提示冲突，由调用方刷新后重试，不盲重试写操作
             const rawMsg = responseData.detail || responseData.message || responseData.msg || '操作冲突，请刷新后重试'
@@ -385,10 +400,16 @@ class Request {
     })
 
     setTimeout(() => {
-      uni.reLaunch({
+      // 用 navigateTo 而非 reLaunch，保留返回栈，用户登录后可退回原页
+      try {
+        const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+        const current = pages.length ? pages[pages.length - 1] : null
+        if (current && current.route && String(current.route).indexOf('pages/index/index') >= 0) return
+      } catch (e) { /* ignore */ }
+      uni.navigateTo({
         url: '/pages/index/index'
       }).catch(err => {
-        console.error('[跳转失败] reLaunch to login failed:', err)
+        console.error('[跳转失败] navigateTo login failed:', err)
       })
     }, 2000)
   }

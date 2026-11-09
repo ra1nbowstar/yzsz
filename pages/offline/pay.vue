@@ -844,39 +844,18 @@ const bindToMerchantIfOffline = async () => {
       }
       return typeof data === 'string' ? data.trim() : ''
     }
-    let buyerMobile = mobile ? String(mobile).trim() : ''
-    if (!buyerMobile && userId != null && userId !== '') {
-      try {
-        console.log('[线下支付绑定] 买方缺少 mobile，尝试通过 user_id 查询手机号', { userId })
-        const buyerRes = await getMobileByUserId(userId, 'gm2025')
-        buyerMobile = resolveMobileFromApi(buyerRes)
-        console.log('[线下支付绑定] 买方手机号查询结果', { buyerMobile: String(buyerMobile).slice(0, 3) + '****' + String(buyerMobile).slice(-4) })
-      } catch (e) {
-        console.error('[线下支付绑定] 买方手机号查询失败', e)
-      }
-    }
+    // 普通用户页面不再调用管理员接口 /user/mobile；买方手机号只取本地登录信息
+    const buyerMobile = mobile ? String(mobile).trim() : ''
     if (!buyerMobile) {
-      console.warn('[线下支付绑定] 跳过：无法获取买方手机号', { mobile: String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4), userId })
+      console.warn('[线下支付绑定] 跳过：本地缺少买方手机号', { userId })
       return
     }
-    let referrerMobile = ''
-    try {
-      console.log('[线下支付绑定] 开始：通过推荐人ID查询手机号', { referrerUserId })
-      const refRes = await getMobileByUserId(referrerUserId, 'gm2025')
-      referrerMobile = resolveMobileFromApi(refRes)
-      console.log('[线下支付绑定] 推荐人手机号查询结果', { referrerUserId, referrerMobile: String(referrerMobile).slice(0, 3) + '****' + String(referrerMobile).slice(-4) })
-    } catch (e) {
-      console.error('[线下支付绑定] 推荐人手机号查询失败', { referrerUserId, error: e?.message || e })
-    }
-    if (!referrerMobile) {
-      console.warn('[线下支付绑定] 跳过：未获取到推荐人手机号', { referrerUserId })
+    // 推荐人直接用 referrer_id 绑定，避免查询他人手机号
+    if (String(referrerUserId) === String(userId)) {
+      console.warn('[线下支付绑定] 跳过：推荐人与买方相同', { referrerUserId })
       return
     }
-    if (String(referrerMobile) === String(buyerMobile)) {
-      console.warn('[线下支付绑定] 跳过：推荐人手机号与买方相同', { buyerMobile: String(buyerMobile).slice(0, 3) + '****' + String(buyerMobile).slice(-4), referrerMobile: String(referrerMobile).slice(0, 3) + '****' + String(referrerMobile).slice(-4) })
-      return
-    }
-    const payload = { mobile: buyerMobile, referrer_mobile: referrerMobile }
+    const payload = { mobile: buyerMobile, referrer_id: referrerUserId }
     console.log('[线下支付绑定] 调用 bindReferrer(mobile+referrer_mobile)', payload)
     await bindReferrer(payload)
     console.log('[线下支付绑定] ✅ 绑定成功（mobile+referrer_mobile）', payload)

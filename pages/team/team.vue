@@ -93,7 +93,7 @@
 			<!-- 直推成员列表 -->
 			<view class="member-list-container">
 				<!-- 递归显示成员 -->
-				<template v-for="member in directMembers" :key="member.id || member.mobile">
+				<template v-for="member in directMembers" :key="member.id">
 					<MemberRecursiveItem
 						:member="member"
 						:depth="0"
@@ -117,7 +117,7 @@ import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getReferDirect, getReferTeam, getUniLevel, refreshUserInfo, getUserInfo } from '@/api/user.js'
 import { getUniLevelStatus, promoteUniLevel } from '@/api/team.js'
-import { getPointsSummary } from '@/api/points.js'
+import { getAssets } from '@/api/assets.js'
 import { getLevelIcon, getLevelText, getUserLevelInfo } from '@/utils/level.js'
 import { getAvatarUrl } from '@/utils/avatar.js'
 import MemberRecursiveItem from '@/components/member-recursive-item.vue'
@@ -239,39 +239,12 @@ const goToPointsLog = () => {
  */
 const loadRewardStats = async () => {
 	try {
-		const storedUserInfo = uni.getStorageSync('userInfo') || {}
-		const userId = storedUserInfo.id || storedUserInfo.user_id
-		
-		if (!userId) {
-			rewardStats.value.totalReward = 0
-			remainingPoints.value = 0
-			return
-		}
-		
-		// 调用点数汇总接口
-		const res = await getPointsSummary(userId)
-		const summary = res.data || res || {}
-		
-		// 累计雨点：cumulative_total
-		if (summary.cumulative_total !== undefined) {
-			rewardStats.value.totalReward = parseFloat(summary.cumulative_total || 0)
-		} else {
-			rewardStats.value.totalReward = 0
-		}
-		
-		// 剩余雨点：remaining_points
-		if (summary.remaining_points !== undefined) {
-			remainingPoints.value = parseFloat(summary.remaining_points || 0)
-		} else if (summary.true_total_points !== undefined) {
-			// 兼容可能的字段名
-			remainingPoints.value = parseFloat(summary.true_total_points || 0)
-		} else {
-			remainingPoints.value = 0
-		}
-		
-		// 积分汇总加载成功
+		// 统一走资产适配层；团队页只用雨点，避免多余请求
+		const assets = await getAssets({ need: ['rain'] })
+		rewardStats.value.totalReward = assets.cumulativeRain === null ? 0 : assets.cumulativeRain
+		remainingPoints.value = assets.rain === null ? 0 : assets.rain
 	} catch (error) {
-		console.error('[团队页面] 加载积分汇总失败:', error)
+		console.error('[团队页面] 加载雨点失败:', error)
 		rewardStats.value.totalReward = 0
 		remainingPoints.value = 0
 	}
@@ -412,35 +385,7 @@ const loadDirectMembers = async () => {
 			let name = member.name || member.mobile || '未设置昵称'
 			let member_level = member.member_level || 0
 			
-			if (member.mobile) {
-				try {
-					const userInfoRes = await getUserInfo(member.mobile)
-					const userDetail = userInfoRes.data || userInfoRes
-					
-					// 更新头像 - 优先使用 avatar_path，其次使用 avatar
-					if (userDetail && userDetail.avatar_path && userDetail.avatar_path !== 'null' && userDetail.avatar_path.trim() !== '') {
-						avatar_path = userDetail.avatar_path
-					} else if (userDetail && userDetail.avatar && userDetail.avatar !== 'null' && userDetail.avatar.trim() !== '') {
-						avatar_path = userDetail.avatar
-					}
-					
-					// 更新昵称（如果用户详情中有更完整的昵称）
-					if (userDetail && userDetail.name && userDetail.name !== member.mobile) {
-						name = userDetail.name
-					} else if (userDetail && userDetail.nickname) {
-						name = userDetail.nickname
-					}
-					
-					// 更新会员等级
-					if (userDetail && userDetail.member_level !== undefined) {
-						member_level = userDetail.member_level
-					}
-					
-					console.log('[直推成员] 获取头像成功:', member.mobile, avatar_path)
-				} catch (error) {
-					console.warn('[直推成员] 获取用户详情失败，使用默认数据:', member.mobile, error)
-				}
-			}
+			// 普通用户不能通过 GET /user/info 查询他人资料（后端已限制为本人），直接使用团队接口返回的成员字段
 			
 			return {
 				...member,
@@ -583,35 +528,7 @@ const loadTeamMembers = async (member) => {
 			let member_level = teamMember.member_level || 0
 			const memberMobile = teamMember.mobile || teamMember.phone
 			
-			if (memberMobile) {
-				try {
-					const userInfoRes = await getUserInfo(memberMobile)
-					const userDetail = userInfoRes.data || userInfoRes
-					
-					// 更新头像 - 优先使用 avatar_path，其次使用 avatar
-					if (userDetail && userDetail.avatar_path && userDetail.avatar_path !== 'null' && userDetail.avatar_path.trim() !== '') {
-						avatar_path = userDetail.avatar_path
-					} else if (userDetail && userDetail.avatar && userDetail.avatar !== 'null' && userDetail.avatar.trim() !== '') {
-						avatar_path = userDetail.avatar
-					}
-					
-					// 更新昵称（如果用户详情中有更完整的昵称）
-					if (userDetail && userDetail.name && userDetail.name !== memberMobile) {
-						name = userDetail.name
-					} else if (userDetail && userDetail.nickname) {
-						name = userDetail.nickname
-					}
-					
-					// 更新会员等级
-					if (userDetail && userDetail.member_level !== undefined) {
-						member_level = userDetail.member_level
-					}
-					
-					console.log('[团队成员] 获取头像成功:', memberMobile, avatar_path)
-				} catch (error) {
-					console.warn('[团队成员] 获取用户详情失败，使用默认数据:', memberMobile, error)
-				}
-			}
+			// 普通用户不能通过 GET /user/info 查询他人资料（后端已限制为本人），直接使用团队接口返回的成员字段
 			
 			return {
 				...teamMember,
@@ -656,9 +573,9 @@ const viewUserDetail = (user) => {
 	if (!checkLogin()) {
 		return
 	}
-	if (!user || !user.mobile) return
+	if (!user || !user.id) return
 	uni.navigateTo({
-		url: `/subPackages/page2/pages/team/member-detail?mobile=${encodeURIComponent(user.mobile)}`
+		url: `/subPackages/page2/pages/team/member-detail?id=${encodeURIComponent(user.id)}`
 	})
 }
 

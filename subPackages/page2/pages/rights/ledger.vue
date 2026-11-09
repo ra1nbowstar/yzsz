@@ -23,7 +23,7 @@
 					<text class="ledger-item-delta" :class="item.delta > 0 ? 'up' : 'down'">
 						{{ item.delta > 0 ? '+' : '' }}{{ item.delta }} {{ item.assetLabel }}
 					</text>
-					<text class="ledger-item-balance">余额 {{ item.balanceAfter }}</text>
+					<text class="ledger-item-balance">计量值 {{ item.balanceAfter }}</text>
 				</view>
 			</view>
 			<view class="ledger-empty" v-if="filteredList.length === 0">

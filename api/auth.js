@@ -71,9 +71,9 @@ export const updateUserName = async (name, mobile = null) => {
   const userInfo = uni.getStorageSync('userInfo') || {}
   const userId = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
   
-  // 优先使用传入的mobile，否则从本地存储获取
+  // 优先使用传入的mobile，否则从本地存储获取（update-profile 用登录手机号确认身份）
   if (!mobile) {
-    mobile = userInfo.mobile || userInfo.phone
+    mobile = userInfo.mobile
   }
   
   // 优先使用mobile（不验证格式），如果没有则使用user_id
@@ -451,9 +451,9 @@ export const updateUserMobile = async (newMobile, oldMobile = null) => {
 export const updateUserPassword = async (oldPassword, newPassword, mobile = null) => {
   if (!mobile) {
     const userInfo = uni.getStorageSync('userInfo') || {}
-    mobile = userInfo.mobile || userInfo.phone
+    mobile = userInfo.mobile
     if (!mobile) {
-      return Promise.reject(new Error('缺少手机号，请先登录'))
+      return Promise.reject(new Error('缺少登录手机号，请重新登录'))
     }
   }
   
@@ -579,29 +579,24 @@ export const setStatus = (data) => {
 }
 
 /**
- * 后台设置联创星级
+ * 后台设置联创星级（管理员接口，鉴权依赖 Bearer Token）
  * @param {Object} data 设置数据
  * @param {Number} data.user_id 用户ID
  * @param {Number} data.level 联创星级等级
- * @param {String} data.admin_key 后台口令，默认为 'admin2025'
  * @returns {Promise}
  */
 export const setUnilevel = (data) => {
-  const { user_id, level, admin_key = 'admin2025' } = data
+  const { user_id, level } = data
   if (!user_id) {
     return Promise.reject(new Error('用户ID不能为空'))
   }
   if (level === undefined || level === null) {
     return Promise.reject(new Error('联创星级等级不能为空'))
   }
-  if (!admin_key) {
-    return Promise.reject(new Error('后台口令不能为空'))
-  }
-  
+
   return request.post('/admin/unilevel/set', {
     user_id,
-    level,
-    admin_key
+    level
   })
 }
 
@@ -611,16 +606,16 @@ export const setUnilevel = (data) => {
  * @returns {Promise}
  */
 export const getUserInfo = (mobile) => {
-  // 如果没有传递 mobile，从本地存储获取
+  // 如果没有传递 mobile，从本地存储获取（只用登录手机号 mobile）
   if (!mobile) {
     const userInfo = uni.getStorageSync('userInfo') || {}
-    mobile = userInfo.mobile || userInfo.phone
+    mobile = userInfo.mobile
   }
   
   // 如果还是没有 mobile，返回错误
   if (!mobile) {
-    console.error('[用户信息API] 错误：缺少 mobile 参数，无法调用 user/info 接口')
-    return Promise.reject(new Error('缺少用户手机号，请先登录'))
+    console.error('[用户信息API] 错误：缺少登录手机号，无法调用 user/info 接口')
+    return Promise.reject(new Error('缺少登录手机号，请重新登录'))
   }
   
   // 传递 mobile 作为查询参数
@@ -674,13 +669,12 @@ export const grantPlatformAccount = (data) => {
 }
 
 /**
- * 后台赋予商户身份（通过手机号或商户号）
+ * 后台赋予商户身份（管理员接口，鉴权依赖 Bearer Token）
  * @param {String} mobile 手机号或商户号
- * @param {String} admin_key 管理员密钥，默认 gm2025
  * @returns {Promise}
  */
-export const grantMerchant = (mobile, admin_key = 'gm2025') => {
-  const url = `/user/grant-merchant?mobile=${encodeURIComponent(mobile)}&admin_key=${encodeURIComponent(admin_key)}`
+export const grantMerchant = (mobile) => {
+  const url = `/user/grant-merchant?mobile=${encodeURIComponent(mobile)}`
   return request.post(url, {})
 }
 

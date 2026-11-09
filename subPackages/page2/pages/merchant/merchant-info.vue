@@ -87,7 +87,7 @@ const onGrantMerchant = async (item, idx) => {
   }
   granting.value = idx
   try {
-    await grantMerchant(mobile, 'gm2025')
+    await grantMerchant(mobile)
     uni.showToast({ title: '设置成功', icon: 'success' })
   } catch (e) {
     console.error('设为商家失败', e)

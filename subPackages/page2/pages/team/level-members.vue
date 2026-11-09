@@ -10,7 +10,7 @@
 		<view class="member-list" v-if="memberList.length > 0">
 			<view 
 				v-for="(member, index) in memberList" 
-				:key="member.id || member.mobile || index"
+				:key="member.id || index"
 				class="member-item"
 			>
 				<view class="member-content" @tap="viewUserDetail(member)">
@@ -121,20 +121,15 @@ const viewUserDetail = (user) => {
 		return
 	}
 	
-	// 优先使用 mobile，如果没有则使用 id
-	const identifier = user.mobile || user.phone || user.id
-	if (!identifier) {
+	// 团队详情接口用 users.id
+	if (!user.id) {
 		uni.showToast({ title: '用户信息不完整', icon: 'none' })
 		return
 	}
 	
 	// 跳转到用户详情页
-	const params = user.mobile || user.phone 
-		? `mobile=${encodeURIComponent(user.mobile || user.phone)}` 
-		: `id=${encodeURIComponent(user.id)}`
-	
 	uni.navigateTo({
-		url: `/subPackages/page2/pages/team/member-detail?${params}`
+		url: `/subPackages/page2/pages/team/member-detail?id=${encodeURIComponent(user.id)}`
 	})
 }
 

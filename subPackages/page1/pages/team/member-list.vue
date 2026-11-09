@@ -252,31 +252,7 @@ const loadMembers = async () => {
 				
 				// 从用户详情接口获取头像
 				let avatar_path = member.avatar_path || member.avatar || ''
-				if (memberMobile) {
-					try {
-						const userInfoRes = await getUserInfo(memberMobile)
-						const userDetail = userInfoRes.data || userInfoRes
-						console.log('[获取头像] 用户详情响应:', memberMobile, userDetail)
-						if (userDetail) {
-							if (userDetail.avatar_path && userDetail.avatar_path !== 'null' && userDetail.avatar_path.trim() !== '') {
-								avatar_path = userDetail.avatar_path
-								console.log('[获取头像] 使用 avatar_path:', avatar_path)
-							} else if (userDetail.avatar && userDetail.avatar !== 'null' && userDetail.avatar.trim() !== '') {
-								avatar_path = userDetail.avatar
-								console.log('[获取头像] 使用 avatar:', avatar_path)
-							} else {
-								console.warn('[获取头像] 用户详情中没有有效头像字段:', userDetail)
-							}
-						} else {
-							console.warn('[获取头像] 用户详情数据为空')
-						}
-					} catch (e) {
-						console.error('[获取头像] 获取用户详情失败:', memberMobile, e.message || e)
-					}
-				} else {
-					console.warn('[获取头像] 成员手机号为空')
-				}
-				console.log('[获取头像] 最终头像路径:', memberMobile, avatar_path || '空，将使用默认头像')
+				// 普通用户不能通过 GET /user/info 查询他人资料，直接使用团队接口返回的头像字段
 				
 				return {
 					...member,
@@ -356,31 +332,7 @@ const loadMembers = async () => {
 				
 				// 从用户详情接口获取头像
 				let avatar_path = member.avatar_path || member.avatar || ''
-				if (memberMobile) {
-					try {
-						const userInfoRes = await getUserInfo(memberMobile)
-						const userDetail = userInfoRes.data || userInfoRes
-						console.log('[获取头像] 用户详情响应:', memberMobile, userDetail)
-						if (userDetail) {
-							if (userDetail.avatar_path && userDetail.avatar_path !== 'null' && userDetail.avatar_path.trim() !== '') {
-								avatar_path = userDetail.avatar_path
-								console.log('[获取头像] 使用 avatar_path:', avatar_path)
-							} else if (userDetail.avatar && userDetail.avatar !== 'null' && userDetail.avatar.trim() !== '') {
-								avatar_path = userDetail.avatar
-								console.log('[获取头像] 使用 avatar:', avatar_path)
-							} else {
-								console.warn('[获取头像] 用户详情中没有有效头像字段:', userDetail)
-							}
-						} else {
-							console.warn('[获取头像] 用户详情数据为空')
-						}
-					} catch (e) {
-						console.error('[获取头像] 获取用户详情失败:', memberMobile, e.message || e)
-					}
-				} else {
-					console.warn('[获取头像] 成员手机号为空')
-				}
-				console.log('[获取头像] 最终头像路径:', memberMobile, avatar_path || '空，将使用默认头像')
+				// 普通用户不能通过 GET /user/info 查询他人资料，直接使用团队接口返回的头像字段
 				
 				return {
 					id: member.id || member.user_id || member.uid,
@@ -467,31 +419,7 @@ const loadMembers = async () => {
 				
 				// 从用户详情接口获取头像
 				let avatar_path = member.avatar_path || member.avatar || ''
-				if (memberMobile) {
-					try {
-						const userInfoRes = await getUserInfo(memberMobile)
-						const userDetail = userInfoRes.data || userInfoRes
-						console.log('[获取头像] 用户详情响应:', memberMobile, userDetail)
-						if (userDetail) {
-							if (userDetail.avatar_path && userDetail.avatar_path !== 'null' && userDetail.avatar_path.trim() !== '') {
-								avatar_path = userDetail.avatar_path
-								console.log('[获取头像] 使用 avatar_path:', avatar_path)
-							} else if (userDetail.avatar && userDetail.avatar !== 'null' && userDetail.avatar.trim() !== '') {
-								avatar_path = userDetail.avatar
-								console.log('[获取头像] 使用 avatar:', avatar_path)
-							} else {
-								console.warn('[获取头像] 用户详情中没有有效头像字段:', userDetail)
-							}
-						} else {
-							console.warn('[获取头像] 用户详情数据为空')
-						}
-					} catch (e) {
-						console.error('[获取头像] 获取用户详情失败:', memberMobile, e.message || e)
-					}
-				} else {
-					console.warn('[获取头像] 成员手机号为空')
-				}
-				console.log('[获取头像] 最终头像路径:', memberMobile, avatar_path || '空，将使用默认头像')
+				// 普通用户不能通过 GET /user/info 查询他人资料，直接使用团队接口返回的头像字段
 				
 				return {
 					id: member.id || member.user_id || member.uid,
@@ -558,7 +486,7 @@ const viewMemberDetail = (member) => {
 		return
 	}
 	uni.navigateTo({ 
-		url: `/subPackages/page2/pages/team/member-detail?mobile=${encodeURIComponent(member.mobile)}` 
+		url: `/subPackages/page2/pages/team/member-detail?id=${encodeURIComponent(member.id)}` 
 	})
 }
 

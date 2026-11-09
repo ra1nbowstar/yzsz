@@ -9,8 +9,14 @@
       <button class="btn-use" @tap="goToMyFunds">去使用</button>
     </view>
 
+    <!-- 权限不足/加载失败：不渲染 0% 假数据 -->
+    <view class="pool-error" v-if="loadFailed">
+      <text class="pool-error-text">{{ loadErrorText }}</text>
+      <button class="btn-reset" @tap="loadData">重试</button>
+    </view>
+
     <!-- 资金池列表（不显示商户余额，商户余额固定 80% 保持不变） -->
-    <view class="pool-list">
+    <view class="pool-list" v-if="!loadFailed">
       <view 
         v-for="pool in displayPoolList" 
         :key="pool.key"
@@ -37,7 +43,7 @@
     </view>
 
     <!-- 总计提示：其他资金池合计须为 20% -->
-    <view class="total-info">
+    <view class="total-info" v-if="!loadFailed">
       <text class="total-label">其他资金池总计：</text>
       <text class="total-value" :class="{ 'error': Math.abs(totalPercentage - 20) > 0.01 }">
         {{ totalPercentage.toFixed(2) }}%
@@ -48,7 +54,7 @@
     </view>
 
     <!-- 操作按钮 -->
-    <view class="action-buttons">
+    <view class="action-buttons" v-if="!loadFailed">
       <button class="btn-reset" @tap="resetData">重置</button>
       <button 
         class="btn-save" 
@@ -80,6 +86,10 @@ const poolConfig = {
 
 // 资金池列表
 const poolList = ref([])
+
+// 加载失败/无权限状态（避免把失败渲染成 0%）
+const loadFailed = ref(false)
+const loadErrorText = ref('')
 
 // 保存状态
 const saving = ref(false)
@@ -174,18 +184,23 @@ const loadData = async () => {
     console.log('[资金池] 获取配置成功:', res)
     
     if (res && res.success && res.data != null) {
+      loadFailed.value = false
+      loadErrorText.value = ''
       initPoolList(res.data)
     } else {
-      initPoolList({})
-      if (res && res.message) uni.showToast({ title: res.message, icon: 'none' })
+      // 接口失败/无数据时不渲染 0%，避免误以为数据被清空
+      loadFailed.value = true
+      loadErrorText.value = (res && res.message) ? res.message : '资金池数据加载失败'
+      poolList.value = []
     }
   } catch (error) {
     console.error('[资金池] 获取配置失败:', error)
-    initPoolList({})
-    uni.showToast({ 
-      title: (error && error.message) ? error.message : '加载失败，请重试', 
-      icon: 'none' 
-    })
+    const code = error && (error.statusCode ?? error.code)
+    loadFailed.value = true
+    loadErrorText.value = code === 403
+      ? '当前账号无管理员权限，无法查看资金池'
+      : ((error && error.message) ? error.message : '加载失败，请重试')
+    poolList.value = []
   } finally {
     uni.hideLoading()
   }
@@ -475,6 +490,25 @@ onMounted(() => {
 
 .btn-save:not(:disabled):active {
   opacity: 0.8;
+}
+
+/* 权限不足/加载失败状态 */
+.pool-error {
+  margin: 40rpx 30rpx;
+  padding: 60rpx 30rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30rpx;
+}
+
+.pool-error-text {
+  font-size: 28rpx;
+  color: #666;
+  text-align: center;
+  line-height: 1.6;
 }
 </style>
 

@@ -49,7 +49,7 @@
 		<template v-if="member.expanded && member.children && Array.isArray(member.children) && member.children.length > 0">
 			<member-recursive
 				v-for="(child, index) in member.children"
-				:key="`child-${child.id || child.mobile || index}-${depth}`"
+				:key="`child-${child.id || index}-${depth}`"
 				:member="child"
 				:depth="depth + 1"
 				@toggle-expand="$emit('toggle-expand', $event)"

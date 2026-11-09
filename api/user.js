@@ -51,22 +51,19 @@ const processImageUrl = (url) => {
 }
 
 /**
- * 修改手机号（后台修改，无需验证码）
+ * 修改手机号（后台管理员接口，无需验证码）——仅限管理员页面调用
+ * 管理员鉴权依赖 Bearer Token（request.js 统一携带），不再传后台口令
  * @param {Number} userId 用户ID
- * @param {String} oldMobile 原手机号或 openid 等后端用以标识“原”的字符串（首次绑定可传空，内部用占位）
+ * @param {String} oldMobile 原手机号或 openid 等后端用以标识“原”的字符串
  * @param {String} newMobile 新手机号
- * @param {String} key 后台口令（默认：gm2025）
  * @returns {Promise}
  */
-export const updateMobile = (userId, oldMobile, newMobile, key = 'gm2025') => {
+export const updateMobile = (userId, oldMobile, newMobile) => {
   if (!userId) {
     return Promise.reject(new Error('用户ID不能为空'))
   }
   if (!newMobile || !/^\d{11}$/.test(newMobile)) {
     return Promise.reject(new Error('新手机号格式不正确'))
-  }
-  if (!key) {
-    return Promise.reject(new Error('后台口令不能为空'))
   }
 
   // old_mobile 必传，且不自行填充：只有「非 11 位」才调用本接口，此时用户信息的 mobile 必有值（如 wx_xxx）
@@ -74,7 +71,7 @@ export const updateMobile = (userId, oldMobile, newMobile, key = 'gm2025') => {
   if (!raw) {
     return Promise.reject(new Error('old_mobile 必填，应传用户个人信息的 mobile（如 wx_xxx）'))
   }
-  const url = `/user/mobile?user_id=${userId}&old_mobile=${encodeURIComponent(raw)}&new_mobile=${encodeURIComponent(newMobile)}&key=${encodeURIComponent(key)}`
+  const url = `/user/mobile?user_id=${userId}&old_mobile=${encodeURIComponent(raw)}&new_mobile=${encodeURIComponent(newMobile)}`
 
   return request.put(url)
 }
@@ -127,70 +124,18 @@ export const getPhone = (code, userId) => {
 }
 
 /**
- * 获取当前用户用于调后端的 11 位手机号：优先本地 userInfo，避免 GET /user/mobile 未部署时无意义 404。
+ * 获取当前用户的 11 位手机号：只读本地登录信息。
+ * 普通用户页面不得调用管理员接口 /user/mobile 反查手机号。
  * @returns {Promise<String>}
  */
 const getActualMobileFromBackend = async () => {
-  try {
-    const userInfo = uni.getStorageSync('userInfo') || {}
-    const localFirst = String(userInfo.mobile || userInfo.phone || '').trim()
-    if (/^\d{11}$/.test(localFirst)) {
-      return localFirst
-    }
-
-    const userId = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
-
-    if (!userId) {
-      console.error('[地址API] 错误：缺少 user_id，无法获取实际手机号')
-      throw new Error('缺少用户ID，请先登录')
-    }
-
-    const res = await getMobileByUserId(userId, 'gm2025')
-    console.log('[地址API] 从后端获取手机号响应')
-    
-    // 解析返回的手机号（兼容多种响应格式）
-    let mobile = null
-    if (res) {
-      // 格式1: { data: { mobile: "138..." } }
-      if (res.data && typeof res.data === 'object' && res.data.mobile) {
-        mobile = res.data.mobile
-      }
-      // 格式2: { mobile: "138..." }
-      else if (res.mobile) {
-        mobile = res.mobile
-      }
-      // 格式3: { data: "138..." } (直接返回字符串)
-      else if (res.data && typeof res.data === 'string') {
-        mobile = res.data
-      }
-      // 格式4: 直接返回字符串
-      else if (typeof res === 'string') {
-        mobile = res
-      }
-    }
-    
-    if (!mobile || typeof mobile !== 'string' || !mobile.trim()) {
-      console.warn('[地址API] 未能从后端获取到手机号，使用本地存储的手机号')
-      // 如果后端没有返回，尝试使用本地存储的有效手机号
-      const localMobile = userInfo.mobile || userInfo.phone
-      if (localMobile && /^\d{11}$/.test(localMobile)) {
-        return localMobile
-      }
-      throw new Error('无法获取用户手机号')
-    }
-    
-    return mobile.trim()
-  } catch (error) {
-    console.error('[地址API] 获取后端手机号失败:', error)
-    // 如果获取失败，尝试使用本地存储的有效手机号
-    const userInfo = uni.getStorageSync('userInfo') || {}
-    const localMobile = userInfo.mobile || userInfo.phone
-    if (localMobile && /^\d{11}$/.test(localMobile)) {
-      console.log('[地址API] 使用本地存储的手机号:', String(localMobile).slice(0, 3) + '****' + String(localMobile).slice(-4))
-      return localMobile
-    }
-    throw error
+  const userInfo = uni.getStorageSync('userInfo') || {}
+  const mobile = String(userInfo.mobile || userInfo.phone || '').trim()
+  if (/^\d{11}$/.test(mobile)) {
+    return mobile
   }
+  console.error('[地址API] 本地缺少有效手机号')
+  throw new Error('本地缺少手机号，请重新登录')
 }
 
 /**
@@ -369,9 +314,7 @@ export const setReturnAddress = async (data) => {
   // 根据API文档，使用管理员接口，参数通过query传递
   const queryParams = []
   
-  // 添加admin_key
-  queryParams.push(`admin_key=${encodeURIComponent('admin2025')}`)
-  
+  // 管理员鉴权依赖 Bearer Token（request.js 统一携带），不再传后台口令
   // 添加地址参数
   if (data.name) queryParams.push(`name=${encodeURIComponent(data.name)}`)
   if (data.phone) queryParams.push(`phone=${encodeURIComponent(data.phone)}`)
@@ -481,17 +424,17 @@ export const setLevel = (data) => {
  * @returns {Promise} 返回用户信息，格式：{ uid, mobile, name, ... }
  */
 export const getUserInfo = (mobile) => {
-  // 如果没有传递 mobile，从本地存储获取
+  // 如果没有传递 mobile，从本地存储获取（只用登录手机号 mobile，不用 phone）
   if (!mobile) {
     const userInfo = uni.getStorageSync('userInfo') || {}
-    mobile = userInfo.mobile || userInfo.phone
+    mobile = userInfo.mobile
   }
   
   // 如果还是没有 mobile，返回错误（但不抛出异常，避免中断流程）
   if (!mobile) {
-    console.warn('[用户信息API] 警告：缺少 mobile 参数，无法调用 user/info 接口')
+    console.warn('[用户信息API] 警告：缺少登录手机号，无法调用 user/info 接口')
     // 返回一个 rejected promise，但错误信息更友好
-    return Promise.reject(new Error('缺少用户手机号，请先登录'))
+    return Promise.reject(new Error('缺少登录手机号，请重新登录'))
   }
   
   // 传递 mobile 作为查询参数
@@ -624,7 +567,7 @@ export const getReferDirect = async (params = {}) => {
   let mobile = params.mobile
   if (!mobile) {
     const userInfo = uni.getStorageSync('userInfo') || {}
-    mobile = userInfo.mobile || userInfo.phone
+    mobile = userInfo.mobile
   }
   
   if (!mobile) {
@@ -677,12 +620,25 @@ export const getReferTeam = (params = {}) => {
 }
 
 /**
- * 根据用户ID获取手机号
+ * 团队成员详情（仅限当前登录用户团队树内的下级成员）
+ * GET /user/team/member/{id}
+ * @param {Number} id users.id（团队列表返回的 id，不是 uid、不是手机号）
+ * @returns {Promise} 直接返回对象 { id, name, avatar_path, member_level, layer, direct_count, team_total, referrer }
+ */
+export const getTeamMemberDetail = (id) => {
+  if (id === undefined || id === null || id === '') {
+    return Promise.reject(new Error('缺少成员ID'))
+  }
+  return request.get(`/user/team/member/${encodeURIComponent(id)}`)
+}
+
+/**
+ * 根据用户ID获取手机号（管理员接口）——仅限管理员页面调用
+ * 管理员鉴权依赖 Bearer Token，不再传后台口令
  * @param {Number} userId 用户ID
- * @param {String} key 后台口令，默认为 "gm2025"
  * @returns {Promise}
  */
-export const getMobileByUserId = (userId, key = 'gm2025') => {
+export const getMobileByUserId = (userId) => {
   if (!userId) {
     console.error('[获取手机号API] 错误：缺少 user_id 参数')
     return Promise.reject(new Error('缺少用户ID'))
@@ -691,8 +647,7 @@ export const getMobileByUserId = (userId, key = 'gm2025') => {
   console.log('[获取手机号API] 调用接口 /user/mobile，user_id:', userId)
   
   return request.get('/user/mobile', {
-    user_id: userId,
-    key: key
+    user_id: userId
   }).then(res => {
     console.log('[获取手机号API] 接口响应成功')
     return res
@@ -742,40 +697,15 @@ export const getUniLevel = (mobile) => {
  */
 export const refreshUserInfo = async () => {
   try {
-    // 从本地存储获取用户信息/手机号
+    // 从本地存储获取用户信息/手机号（mobile 是登录身份字段，phone 是微信绑定手机号，二者不混用）
     const storedUserInfo = uni.getStorageSync('userInfo') || {}
-    let mobile = storedUserInfo.mobile || storedUserInfo.phone
+    let mobile = storedUserInfo.mobile
     let userData = null
 
-    // 当本地没有手机号时，尝试通过 user_id 调用 getMobileByUserId 作为回退手段
+    // 普通用户只能使用本地登录信息中的手机号；不再调用管理员接口 /user/mobile 反查
     if (!mobile) {
-      console.warn('[刷新用户信息] 本地缺少手机号，尝试通过 user_id 回退')
-      const preservedUserId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
-      if (preservedUserId && typeof getMobileByUserId === 'function') {
-        try {
-          const mobileRes = await getMobileByUserId(preservedUserId, 'gm2025')
-          if (mobileRes) {
-            if (mobileRes.data && typeof mobileRes.data === 'object' && mobileRes.data.mobile) {
-              mobile = mobileRes.data.mobile
-            } else if (typeof mobileRes === 'string') {
-              mobile = mobileRes
-            } else if (mobileRes.mobile) {
-              mobile = mobileRes.mobile
-            } else if (mobileRes.data && typeof mobileRes.data === 'string') {
-              mobile = mobileRes.data
-            }
-          }
-          if (mobile) console.log('[刷新用户信息] 通过 user_id 获取到手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
-        } catch (merr) {
-          console.warn('[刷新用户信息] 通过 user_id 获取手机号失败:', merr)
-        }
-      }
-
-      // 最终如果还是没有手机号，返回本地存储的信息（不再直接抛错）
-      if (!mobile) {
-        console.warn('[刷新用户信息] 无法获取手机号，返回本地存储的信息')
-        return storedUserInfo
-      }
+      console.warn('[刷新用户信息] 本地缺少手机号，返回本地存储的信息')
+      return storedUserInfo
     }
 
     // 若 userData 尚未从 token/profile 获取到，按原逻辑用手机号调用 getUserInfo
@@ -808,7 +738,8 @@ export const refreshUserInfo = async () => {
     )
     const canonicalUserId = serverUserId ?? localUserId
 
-    const preservedMobile = storedUserInfo.mobile || storedUserInfo.phone
+    const preservedMobile = storedUserInfo.mobile
+    const preservedPhone = storedUserInfo.phone
 
     // 合并数据：业务字段以接口为准；id 类字段以上述 canonical 为准
     const updatedUserInfo = {
@@ -817,8 +748,8 @@ export const refreshUserInfo = async () => {
       id: canonicalUserId ?? userData.id ?? userData.user_id ?? userData.uid,
       userId: canonicalUserId ?? userData.userId ?? userData.user_id ?? userData.id,
       uid: canonicalUserId ?? userData.uid ?? userData.user_id ?? userData.id,
-      mobile: preservedMobile || userData.mobile || userData.phone,
-      phone: preservedMobile || userData.mobile || userData.phone,
+      mobile: preservedMobile || userData.mobile,
+      phone: preservedPhone || userData.phone,
       // 确保头像字段被正确保存（优先使用接口返回的，如果没有则保留本地的）
       avatar_path: userData.avatar_path || userData.avatar || storedUserInfo.avatar_path || storedUserInfo.avatar,
       avatar: userData.avatar || userData.avatar_path || storedUserInfo.avatar || storedUserInfo.avatar_path,
@@ -829,38 +760,15 @@ export const refreshUserInfo = async () => {
       isPlatform: userData.isPlatform !== undefined ? userData.isPlatform : (userData.is_platform !== undefined ? userData.is_platform : storedUserInfo.isPlatform)
     }
     
-    // 在写入本地存储前，若未标记为商户则尝试通过手机号或 user_id 调用专用接口确认
+    // 在写入本地存储前，若未标记为商户则尝试通过本地手机号调用专用接口确认
     try {
-      let mobileForCheck = updatedUserInfo.mobile || updatedUserInfo.phone || storedUserInfo.mobile || storedUserInfo.phone
-      if (!mobileForCheck) {
-        const preservedUserId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
-        if (preservedUserId && typeof getMobileByUserId === 'function') {
-          try {
-            const mobileRes = await getMobileByUserId(preservedUserId, 'gm2025')
-            if (mobileRes) {
-              if (mobileRes.data && typeof mobileRes.data === 'object' && mobileRes.data.mobile) {
-                mobileForCheck = mobileRes.data.mobile
-              } else if (typeof mobileRes === 'string') {
-                mobileForCheck = mobileRes
-              } else if (mobileRes.mobile) {
-                mobileForCheck = mobileRes.mobile
-              } else if (mobileRes.data && typeof mobileRes.data === 'string') {
-                mobileForCheck = mobileRes.data
-              }
-            }
-          } catch (merr) {
-            console.warn('[刷新用户信息] 通过 user_id 获取手机号失败:', merr)
-          }
-        }
-      }
+      const mobileForCheck = updatedUserInfo.mobile || storedUserInfo.mobile
 
       if (mobileForCheck && !updatedUserInfo.is_merchant) {
         const remoteFlag = await checkIsMerchant(mobileForCheck)
         if (remoteFlag) {
-          updatedUserInfo.is_merchant = true
-          updatedUserInfo.isMerchant = true
-          updatedUserInfo.is_platform = true
-          updatedUserInfo.isPlatform = true
+          updatedUserInfo.is_merchant = 1
+          updatedUserInfo.isMerchant = 1
           console.log('[刷新用户信息] checkIsMerchant 确认为商户:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))
         } else {
           console.log('[刷新用户信息] checkIsMerchant 未确认为商户:', String(mobileForCheck).slice(0, 3) + '****' + String(mobileForCheck).slice(-4))

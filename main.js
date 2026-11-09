@@ -215,23 +215,3 @@ export function createApp() {
   }
 }
 // #endif
-
-// 自动尝试小程序登录以获取 token（仅在 mp-weixin 环境有效）
-try{
-  if (typeof uni !== 'undefined' && (process.env.UNI_PLATFORM === 'mp-weixin' || typeof wx !== 'undefined')){
-    // 延迟加载以避免影响启动速度
-    import('./utils/wechat-auth.js').then(mod => {
-      const auth = mod.default || mod
-      // 如果已经有 token 则不重复登录
-      const t = uni.getStorageSync('token')
-      if (!t) {
-        // 静默登录，不阻塞启动
-        auth.loginWithWechatCode().then(tok => {
-          console.log('[wechat-auth] 登录成功')
-        }).catch(err => {
-          console.warn('[wechat-auth] 登录未完成或失败', err && err.message)
-        })
-      }
-    }).catch(err => console.warn('无法加载 wechat-auth', err))
-  }
-}catch(e){ /* ignore */ }

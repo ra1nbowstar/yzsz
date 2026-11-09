@@ -518,6 +518,11 @@ const getTimeAgo = (timestamp) => {
  * 加载公益播报（实时更新）
  */
 const loadCharityNotices = async () => {
+	// 游客不请求公益接口，避免 401；只展示静态文案
+	if (!uni.getStorageSync('token')) {
+		charityNotices.value = ['您的每一笔订单都在为公益事业贡献力量']
+		return
+	}
 	try {
 		console.log('[首页] 开始实时加载公益播报')
 		
@@ -742,9 +747,9 @@ const tryBindReferrerOnHome = async (retryCount = 0, maxRetries = 3) => {
 				console.log('🔄 [首页推荐人绑定] 步骤3: userMobile为空，尝试通过user_id获取手机号')
 				console.log('🔄 [首页推荐人绑定] user_id:', userId)
 				try {
-					console.log('📤 [首页推荐人绑定] 调用 getMobileByUserId 接口...')
-					const mobileRes = await getMobileByUserId(userId, 'gm2025')
-					console.log('📥 [首页推荐人绑定] 通过user_id获取手机号响应')
+					console.log('📤 [首页推荐人绑定] 不再调用管理员接口 /user/mobile，使用本地手机号')
+					const mobileRes = { data: { mobile: userInfo.mobile || userInfo.phone || '' } }
+					console.log('📥 [首页推荐人绑定] 使用本地手机号')
 					
 					// 解析手机号（兼容多种响应格式）
 					if (mobileRes) {

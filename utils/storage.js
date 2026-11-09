@@ -181,6 +181,7 @@ export const clearAllStorage = () => {
 			'token',
 			'wechatInfo',
 			'needCompleteProfile', // 方案3：需完善资料标记，退出时清除
+			'profileSetupPrompted', // 完善资料引导已提示标记（本次安装只提示一次）
 			'addressList',
 			'cart',
 			'favorites',

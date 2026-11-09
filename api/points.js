@@ -3,7 +3,6 @@
  */
 
 import request from '@/utils/request.js'
-import { getMobileByUserId } from '@/api/user.js'
 
 /**
  * 增减积分
@@ -53,61 +52,18 @@ export const updatePointsWithAutoMobile = async (params) => {
 }
 
 /**
- * 获取当前用户 11 位手机号：优先本地 userInfo；若无再调 GET /user/mobile（后端未开放时由 catch 回落本地）。
+ * 获取当前用户 11 位手机号：只读本地登录信息。
+ * 普通用户页面不得调用管理员接口 /user/mobile 反查手机号。
  * @returns {Promise<String>}
  */
 const getActualMobileFromBackend = async () => {
-  try {
-    const userInfo = uni.getStorageSync('userInfo') || {}
-    const localFirst = String(userInfo.mobile || userInfo.phone || '').trim()
-    if (/^\d{11}$/.test(localFirst)) {
-      return localFirst
-    }
-
-    const userId = userInfo.user_id || userInfo.id || userInfo.userId || userInfo.uid
-
-    if (!userId) {
-      console.error('[积分API] 错误：缺少 user_id，无法获取实际手机号')
-      throw new Error('缺少用户ID，请先登录')
-    }
-
-    const res = await getMobileByUserId(userId, 'gm2025')
-    console.log('[积分API] 从后端获取手机号响应')
-
-    // 解析返回的手机号（兼容多种响应格式）
-    let mobile = null
-    if (res) {
-      if (res.data && typeof res.data === 'object' && res.data.mobile) {
-        mobile = res.data.mobile
-      } else if (res.mobile) {
-        mobile = res.mobile
-      } else if (res.data && typeof res.data === 'string') {
-        mobile = res.data
-      } else if (typeof res === 'string') {
-        mobile = res
-      }
-    }
-
-    if (!mobile || typeof mobile !== 'string' || !mobile.trim()) {
-      console.warn('[积分API] 未能从后端获取到手机号，使用本地存储的手机号')
-      const localMobile = userInfo.mobile || userInfo.phone
-      if (localMobile && /^\d{11}$/.test(localMobile)) {
-        return localMobile
-      }
-      throw new Error('无法获取用户手机号')
-    }
-
-    return mobile.trim()
-  } catch (error) {
-    console.error('[积分API] 获取后端手机号失败:', error)
-    const userInfo = uni.getStorageSync('userInfo') || {}
-    const localMobile = userInfo.mobile || userInfo.phone
-    if (localMobile && /^\d{11}$/.test(localMobile)) {
-      console.log('[积分API] 使用本地存储的手机号:', String(localMobile).slice(0, 3) + '****' + String(localMobile).slice(-4))
-      return localMobile
-    }
-    throw error
+  const userInfo = uni.getStorageSync('userInfo') || {}
+  const mobile = String(userInfo.mobile || userInfo.phone || '').trim()
+  if (/^\d{11}$/.test(mobile)) {
+    return mobile
   }
+  console.error('[积分API] 本地缺少有效手机号')
+  throw new Error('本地缺少手机号，请重新登录')
 }
 
 /**

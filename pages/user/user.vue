@@ -40,13 +40,14 @@
 				<text class="asset-value">{{ displayPoints }}</text>
 				<text class="asset-label">积分余额</text>
 			</view>
-			<view class="asset-divider"></view>
-			<view class="asset-item">
+			<!-- 暂时隐藏咯哒蛋/咯哒券,保留代码 -->
+			<view v-if="false" class="asset-divider"></view>
+			<view v-if="false" class="asset-item">
 				<text class="asset-value">{{ kadaEggCount }}</text>
 				<text class="asset-label">咯哒蛋</text>
 			</view>
-			<view class="asset-divider"></view>
-			<view class="asset-item">
+			<view v-if="false" class="asset-divider"></view>
+			<view v-if="false" class="asset-item">
 				<text class="asset-value">{{ kadaCouponCount }}</text>
 				<text class="asset-label">咯哒券</text>
 			</view>
@@ -105,7 +106,8 @@
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
-			<view class="menu-item" @tap="goToPage('/subPackages/page2/pages/rights/center')">
+			<!-- 暂时隐藏权益中心入口,保留代码 -->
+			<view v-if="false" class="menu-item" @tap="goToPage('/subPackages/page2/pages/rights/center')">
 				<view class="menu-left">
 					<text class="iconfont icon-wodejiangli menu-icon menu-icon-red"></text>
 					<text class="menu-text">权益中心</text>
@@ -118,6 +120,16 @@
 				<view class="menu-left">
 					<text class="iconfont icon-tuijianhaoyou menu-icon"></text>
 					<text class="menu-text">推荐好友</text>
+				</view>
+				<view class="menu-right">
+					<text class="menu-arrow">›</text>
+				</view>
+			</view>
+			<!-- 暂时隐藏商家中心入口,保留代码 -->
+			<view v-if="false" class="menu-item" @tap="onEnterShopMode">
+				<view class="menu-left">
+					<text class="iconfont icon-shangjiarenzheng menu-icon"></text>
+					<text class="menu-text">商家中心</text>
 				</view>
 				<view class="menu-right">
 					<text class="menu-arrow">›</text>
@@ -200,6 +212,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { logout, updateUserName, updateUserAvatar, updateUserMobile, updateUserPassword, checkIsMerchant, updateProfile } from '@/api/auth.js'
 import { getUserInfo as getUserInfoApi, getMobileByUserId, upgradeUser, setLevel, bindReferrer, getReferDirect, getReferTeam, refreshUserInfo } from '@/api/user.js'
 import { switchToMerchantMode as switchMode, switchToShopMode as switchShopMode } from '@/utils/tabbar.js'
+import { getAssets, formatQty } from '@/api/assets.js'
 import { getMerchantData } from '@/utils/merchant.js'
 import { bindReferrerIfNeeded } from '@/utils/referral.js'
 import { getPointsLog, getPointsBalance } from '@/api/points.js'
@@ -240,7 +253,7 @@ const pointsData = ref({
 
 // 显示给用户看的积分（只显示会员积分）
 const displayPoints = computed(() => {
-	return pointsData.value.member_points.toFixed(4)
+	return formatQty(pointsData.value.member_points)
 })
 
 // 判断是否已登录
@@ -269,44 +282,27 @@ const pointsLogCount = ref(0)
 // 优惠券数量
 const couponCount = ref(0)
 
-// 咯哒蛋数量（后端接口未开发，暂用占位值 0）
+// 咯哒蛋 / 咯哒券数量（展示用）
 const kadaEggCount = ref(0)
-
-// 咯哒券数量（后端接口未开发，暂用占位值 0）
 const kadaCouponCount = ref(0)
 
 /**
- * 加载咯哒蛋、咯哒券数量
- * 后端接口尚未开发，先保留空壳，待接口就绪后在此赋值即可
+ * 统一资产取数：api/assets.js 适配层（页面不直接调接口）。
+ * 过渡态：积分/优惠券由适配层临时取旧接口，蛋/券取 /rights/me。
+ * 本页不展示雨点，取数时跳过 rain，避免多余请求。
  */
-const loadKadaAssets = async () => {
+const loadAssetsFromAdapter = async () => {
+	if (!uni.getStorageSync('token')) return
 	try {
-		// TODO: 接入后端接口，例如：
-		// const res = await getKadaAssets()
-		// kadaEggCount.value = res.data?.kada_egg ?? 0
-		// kadaCouponCount.value = res.data?.kada_coupon ?? 0
-	} catch (error) {
-		console.error('加载咯哒蛋/咯哒券失败', error)
-	}
-}
-
-/**
- * 加载积分余额
- */
-const loadPointsBalance = async () => {
-	try {
-		const res = await getPointsBalance()
-		if (res.data) {
-			pointsData.value = {
-				member_points: res.data.member_points || 0
-			}
-			// 会员积分余额已加载
+		const assets = await getAssets({ need: ['points', 'coupons', 'rights'] })
+		if (assets.points !== null) {
+			pointsData.value = { member_points: assets.points }
 		}
+		if (assets.coupons !== null) couponCount.value = assets.coupons
+		if (assets.kadaEgg !== null) kadaEggCount.value = formatQty(assets.kadaEgg)
+		if (assets.kadaCoupon !== null) kadaCouponCount.value = formatQty(assets.kadaCoupon)
 	} catch (error) {
-		console.error('加载积分余额失败', error)
-		pointsData.value = {
-			member_points: 0
-		}
+		console.error('加载资产失败', error)
 	}
 }
 
@@ -358,37 +354,6 @@ const loadPointsLogCount = async () => {
 	} catch (error) {
 		console.error('加载积分流水数量失败', error)
 		pointsLogCount.value = 0
-	}
-}
-
-/**
- * 加载优惠券数量：优先使用 GET /my 返回的 total（status=unused 时后端统计可用张数），无 total 时再本地过滤回退
- */
-const loadCouponCount = async () => {
-	try {
-		const storedUserInfo = uni.getStorageSync('userInfo') || {}
-		const userId = storedUserInfo.id || storedUserInfo.user_id
-		if (!userId) { couponCount.value = 0; return }
-
-		const res = await getMyCoupons({ user_id: userId, status: 'unused', page: 1, page_size: 1 })
-		let total = pickMyCouponsTotal(res)
-		if (total !== null) {
-			couponCount.value = total
-			return
-		}
-
-		const resFull = await getMyCoupons({ user_id: userId, status: 'unused', page: 1, page_size: 99999 })
-		total = pickMyCouponsTotal(resFull)
-		if (total !== null) {
-			couponCount.value = total
-			return
-		}
-
-		const list = resFull.data?.coupons || resFull.coupons || resFull.data || resFull || []
-		couponCount.value = countUnusedUnexpiredCoupons(list)
-	} catch (err) {
-		console.error('加载优惠券数量失败', err)
-		couponCount.value = 0
 	}
 }
 
@@ -464,38 +429,15 @@ const fetchMobileAndUpdateUserInfo = async () => {
 			return
 		}
 
-		// 开始获取手机号
-
-		// 使用 user_id 和 key 获取手机号
-		const res = await getMobileByUserId(userId, 'gm2025')
-		// 获取手机号接口响应
-
-		// 解析返回的手机号（兼容多种响应格式）
-		let mobile = null
-		if (res) {
-			if (typeof res === 'string') {
-				mobile = res
-			} else if (res.data) {
-				mobile = res.data.mobile || res.data.phone || res.data
-			} else if (res.mobile) {
-				mobile = res.mobile
-			} else if (res.phone) {
-				mobile = res.phone
-			}
-		}
+		// 普通用户只能使用本地登录信息中的手机号，不再调用管理员接口 /user/mobile
+		let mobile = storedUserInfo.mobile || storedUserInfo.phone
 
 		if (!mobile) {
-			// 获取手机号失败
-			// 如果获取手机号失败，尝试使用本地存储的手机号
-			mobile = storedUserInfo.mobile || storedUserInfo.phone
-			if (!mobile) {
-				// 本地也没有手机号，跳过调用 user/info 接口
-				// 如果没有手机号，至少显示本地存储的信息
-				if (storedUserInfo && Object.keys(storedUserInfo).length > 0) {
-					userInfo.value = storedUserInfo
-				}
-				return
+			// 本地没有手机号，至少显示本地存储的信息
+			if (storedUserInfo && Object.keys(storedUserInfo).length > 0) {
+				userInfo.value = storedUserInfo
 			}
+			return
 		}
 
 		// 获取到手机号
@@ -1109,32 +1051,7 @@ const confirmNickname = async () => {
 	const userId = userInfo.value.user_id || userInfo.value.id || userInfo.value.userId || userInfo.value.uid || storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
 	let mobile = userInfo.value.mobile || userInfo.value.phone || storedUserInfo.mobile || storedUserInfo.phone
 
-	// 后端 update-profile 必填 mobile，没有则用 user_id 拉取
-	if (!mobile && userId) {
-		try {
-			const mobileRes = await getMobileByUserId(userId, 'gm2025')
-			if (mobileRes) {
-				if (mobileRes.data && typeof mobileRes.data === 'object' && mobileRes.data.mobile) {
-					mobile = mobileRes.data.mobile
-				} else if (typeof mobileRes === 'string') {
-					mobile = mobileRes
-				} else if (mobileRes.mobile) {
-					mobile = mobileRes.mobile
-				} else if (mobileRes.data && typeof mobileRes.data === 'string') {
-					mobile = mobileRes.data
-				}
-				if (mobile) {
-					storedUserInfo.mobile = mobile
-					storedUserInfo.phone = mobile
-					userInfo.value.mobile = mobile
-					userInfo.value.phone = mobile
-					uni.setStorageSync('userInfo', storedUserInfo)
-				}
-			}
-		} catch (e) {
-			console.warn('[用户页面] 获取 mobile 失败:', e)
-		}
-	}
+	// 普通用户不再调用管理员接口 /user/mobile 反查手机号；本地没有 mobile 时走 userId 更新资料
 
 	uni.showLoading({ title: '更新中...', mask: true })
 	try {
@@ -1198,8 +1115,12 @@ const switchToMerchantMode = () => {
  */
 const onEnterShopMode = () => {
 	if (!checkLogin()) return
-	if (isShopUser.value) {
-		// 商家点击直接进入
+	const flag = Number(userInfo.value.is_merchant || userInfo.value.isMerchant || 0)
+	if (flag === 2) {
+		// 平台用户：直接进平台模式，不要求认证
+		switchToMerchantMode()
+	} else if (flag === 1) {
+		// 商家身份直接进入商家中心
 		switchShopMode()
 	} else {
 		// 普通用户：先弹出认证类型选择弹窗，再进入对应的认证信息填写页
@@ -1305,7 +1226,7 @@ const onRefresh = async () => {
 		try {
 			await Promise.all([
 				loadTeamStats().catch(err => console.warn('[用户页面] 加载团队统计失败:', err)),
-				loadPointsBalance().catch(err => console.warn('[用户页面] 加载积分余额失败:', err))
+				loadAssetsFromAdapter().catch(err => console.warn('[用户页面] 加载资产失败:', err))
 			])
 		} catch (error) {
 			console.warn('[用户页面] 部分数据加载失败，但不影响刷新:', error)
@@ -1367,7 +1288,7 @@ onShow(async () => {
 		await loadUserInfo()
 		// 若刷新后仍缺少手机号，给用户友好提示（提示可引导到设置或重新登录）
 		const effective = updated || uni.getStorageSync('userInfo') || {}
-		if (!effective.mobile && !effective.phone) {
+		if (isLoggedIn.value && !effective.mobile && !effective.phone) {
 			try { uni.showToast({ title: '未能获取完整用户信息，请重新登录或在设置中补全手机号', icon: 'none', duration: 2500 }) } catch (e) {}
 		}
 		// 更新头像时间戳，确保头像显示最新
@@ -1399,10 +1320,8 @@ onShow(async () => {
 	// 加载其他数据
 	loadTeamStats()
 	loadOrderCount()
-	loadPointsBalance()
+	loadAssetsFromAdapter()
 	loadPointsLogCount()
-	loadCouponCount()
-	loadKadaAssets()
 })
 
 // 页面卸载时移除事件监听

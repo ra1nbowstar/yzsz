@@ -1,3 +1,7 @@
+/**
+ * 注意：当前未启用（main.js 已移除启动静默登录），保留供后续 openid 能力参考。
+ * 如需恢复，请先确认不违反「用户浏览后再自行选择登录」的审核要求。
+ */
 import request from './request.js'
 import { saveAuth } from './auth.js'
 
@@ -45,6 +49,7 @@ export async function loginWithWechatCode(){
 export function logout(){
   uni.removeStorageSync('token')
   uni.removeStorageSync('userInfo')
+  uni.removeStorageSync('profileSetupPrompted')
 }
 
 export default { loginWithWechatCode, logout }

@@ -447,139 +447,12 @@ const editNickname = () => {
 }
 
 /**
- * 编辑手机号（支持首次绑定）
+ * 编辑手机号
+ * 后端暂未提供普通用户改号接口（需 Bearer 本人校验 + 新手机号短信验证码 + 占用检查 + 旧会话失效），
+ * 在 POST /user/change-mobile/sms、POST /user/change-mobile 上线前，入口保持禁用。
  */
 const editPhone = async () => {
-	console.log('[设置页面] editPhone 被调用')
-	const currentPhone = userInfo.value.phone || userInfo.value.mobile || ''
-	const currentDisplayPhone = /^\d{11}$/.test(currentPhone) ? currentPhone : ''
-	const isFirstBind = !currentDisplayPhone // 判断是否是首次绑定
-	
-	uni.showModal({
-		title: isFirstBind ? '绑定手机号' : '修改手机号',
-		editable: true,
-		placeholderText: '请输入11位手机号',
-		content: currentDisplayPhone,
-		success: async (res) => {
-			if (res.confirm && res.content) {
-				const newPhone = res.content.trim()
-				// 验证手机号格式
-				if (!/^\d{11}$/.test(newPhone)) {
-					uni.showToast({ title: '请输入正确的11位手机号', icon: 'none' })
-					return
-				}
-				
-				// 如果新手机号和当前手机号相同，不需要更新
-				if (newPhone === currentDisplayPhone) {
-					uni.showToast({ title: '手机号未变化', icon: 'none' })
-					return
-				}
-				
-				// 获取用户ID和原手机号
-				const storedUserInfo = uni.getStorageSync('userInfo') || {}
-				const userId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
-				
-				if (!userId) {
-					uni.showToast({ title: '无法获取用户ID，请重新登录', icon: 'none' })
-					return
-				}
-				
-				// 确定原手机号（oldMobile）：优先使用本地显示手机号
-				let oldMobile = currentDisplayPhone || ''
-
-				// 如果本地没有原手机号，尝试从后端获取并使用后端记录的手机号作为 oldMobile
-				if (!oldMobile) {
-					try {
-						const mobileRes = await getMobileByUserId(userId, 'gm2025')
-						let backendMobile = null
-						if (mobileRes) {
-							if (mobileRes.data && typeof mobileRes.data === 'object' && mobileRes.data.mobile) {
-								backendMobile = mobileRes.data.mobile
-							} else if (mobileRes.mobile) {
-								backendMobile = mobileRes.mobile
-							} else if (mobileRes.data && typeof mobileRes.data === 'string') {
-								backendMobile = mobileRes.data
-							} else if (typeof mobileRes === 'string') {
-								backendMobile = mobileRes
-							}
-						}
-						if (backendMobile && typeof backendMobile === 'string' && backendMobile.trim()) {
-							// 直接使用后端返回的非空字符串作为 oldMobile（支持 wx_... 等格式）
-							oldMobile = backendMobile.trim()
-							console.log('[设置页面] 使用后端手机号作为 oldMobile:', String(oldMobile).slice(0, 3) + '****' + String(oldMobile).slice(-4))
-						} else {
-							// 保留空字符串，由 api 层决定是否发送 old_mobile
-							console.warn('[设置页面] 未从后端解析到可用手机号字符串，后续将由 api 层决定是否包含 old_mobile')
-						}
-					} catch (err) {
-						console.warn('[设置页面] 获取后端手机号失败，后续将使用占位 old_mobile', err)
-					}
-				}
-
-				// 如果仍然没有可用的 oldMobile，保持为空，由 `updateMobile` 决定是否发送该参数
-				
-				try {
-					uni.showLoading({ title: isFirstBind ? '绑定中...' : '修改中...' })
-					
-					// 调用API修改/绑定手机号
-					await updateMobile(userId, oldMobile, newPhone, 'gm2025')
-					
-					console.log('[设置页面] 手机号绑定/修改成功')
-					
-					// 更新本地存储
-					userInfo.value.mobile = newPhone
-					userInfo.value.phone = newPhone
-					
-					const preservedRealMobile = storedUserInfo.real_mobile // 保留微信ID等
-					const preservedUserId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
-					const preservedAvatar = storedUserInfo.avatar_path || storedUserInfo.avatar
-					
-					// 保留所有原有字段，只更新手机号
-					const updatedUserInfo = {
-						...storedUserInfo,
-						mobile: newPhone,
-						phone: newPhone,
-						// 确保关键字段不被覆盖
-						user_id: preservedUserId || storedUserInfo.user_id,
-						id: preservedUserId || storedUserInfo.id,
-						userId: preservedUserId || storedUserInfo.userId,
-						uid: preservedUserId || storedUserInfo.uid,
-						avatar_path: preservedAvatar || storedUserInfo.avatar_path,
-						avatar: preservedAvatar || storedUserInfo.avatar
-					}
-					
-					// 如果有real_mobile（微信ID），保留它
-					if (preservedRealMobile) {
-						updatedUserInfo.real_mobile = preservedRealMobile
-					}
-					
-					uni.setStorageSync('userInfo', updatedUserInfo)
-					
-					// 刷新用户信息
-					await refreshUserInfo()
-					await loadUserInfo()
-					
-					uni.hideLoading()
-					uni.showToast({ title: isFirstBind ? '手机号绑定成功' : '手机号修改成功', icon: 'success' })
-					
-					// 如果是首次绑定，跳转回首页
-					if (isFirstBind) {
-						setTimeout(() => {
-							uni.switchTab({ url: '/pages/home/home' })
-						}, 1500)
-					}
-				} catch (error) {
-					uni.hideLoading()
-					console.error('[设置页面] 绑定/修改手机号失败:', error)
-					uni.showToast({ 
-						title: error.message || (isFirstBind ? '绑定手机号失败，请重试' : '修改手机号失败，请重试'), 
-						icon: 'none',
-						duration: 3000
-					})
-				}
-			}
-		}
-	})
+	uni.showToast({ title: '修改手机号功能暂未开放（需短信验证）', icon: 'none', duration: 2500 })
 }
 
 /**
@@ -928,38 +801,15 @@ const fetchMobileAndUpdateUserInfo = async () => {
 		
 		console.log('[设置页面] 开始获取手机号，用户ID:', userId)
 		
-		// 步骤1: 调用接口获取手机号
-		const res = await getMobileByUserId(userId, 'gm2025')
-		console.log('[设置页面] 获取手机号接口响应')
-		
-		// 解析返回的手机号（兼容多种响应格式）
-		let mobile = null
-		if (res) {
-			// 格式1: { data: { mobile: "138..." } }
-			if (res.data && typeof res.data === 'object' && res.data.mobile) {
-				mobile = res.data.mobile
-			}
-			// 格式2: { mobile: "138..." }
-			else if (res.mobile) {
-				mobile = res.mobile
-			}
-			// 格式3: { data: "138..." } (直接返回字符串)
-			else if (res.data && typeof res.data === 'string') {
-				mobile = res.data
-			}
-			// 格式4: 直接返回字符串
-			else if (typeof res === 'string') {
-				mobile = res
-			}
-		}
-		
+		// 普通用户只能使用本地登录信息中的手机号，不再调用管理员接口 /user/mobile
+		let mobile = storedUserInfo.mobile || storedUserInfo.phone
 		if (!mobile || typeof mobile !== 'string' || !mobile.trim()) {
-			console.warn('[设置页面] 未能从接口响应中解析出手机号')
+			console.warn('[设置页面] 本地缺少手机号')
 			return
 		}
 		
 		mobile = mobile.trim()
-		console.log('[设置页面] 解析到的手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
+		console.log('[设置页面] 本地手机号:', String(mobile).slice(0, 3) + '****' + String(mobile).slice(-4))
 		
 		// 步骤2: 保存手机号到本地存储（确保保留 user_id 和头像）
 		const preservedUserId = storedUserInfo.user_id || storedUserInfo.id || storedUserInfo.userId || storedUserInfo.uid
@@ -1066,12 +916,7 @@ onLoad(async (options) => {
 	// 在用户信息加载完成后再获取手机号
 	fetchMobileAndUpdateUserInfo()
 	
-	// 如果需要绑定手机号，自动打开绑定弹窗
-	if (options && options.needBindMobile === 'true') {
-		setTimeout(() => {
-			editPhone()
-		}, 500)
-	}
+	// 普通用户改号接口未上线，不再自动弹出绑定/修改手机号弹窗
 	
 	// 监听头像裁剪完成事件
 	uni.$on('avatarCropped', onAvatarCropped)
