@@ -281,10 +281,9 @@ const loadTeamStats = async () => {
 			count: levelCountMap[level] || 0
 		})).filter(item => item.count > 0)
 		
-		// 获取直推成员
-		const directRes = await getReferDirect({ mobile, page: 1, size: 1000 })
-		const directList = directRes.data?.rows || directRes.rows || []
-		teamStats.value.directCount = directList.length
+		// 直推人数：只取总数，不拉列表（size: 1000 会超限导致请求失败、人数恒为 0）
+		const directRes = await getReferDirect({ mobile, page: 1, size: 1 })
+		teamStats.value.directCount = directRes.data?.total || directRes.total || 0
 	} catch (error) {
 		console.error('加载团队统计失败', error)
 	}
