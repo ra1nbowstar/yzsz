@@ -1037,27 +1037,22 @@ const handlePay = () => {
 	uni.showToast({ title: '跳转支付...', icon: 'loading' })
 }
 
-/** 确认收货：自提或非微信支付时走原后端接口，否则调起微信官方组件 */
+/** 自提由服务端直接完成。配送单有微信支付流水时走官方确认组件。 */
 const handleReceive = () => {
-  // 自提订单：直接调用后端确认收货接口
   if (order.value.deliveryWay === 'pickup') {
     doConfirmReceive()
     return
   }
-
-  // 商家配送订单，需要微信官方确认收货
-  // 检查是否有微信交易信息（用于官方组件）
-  const hasWechatInfo = !!(order.value.transaction_id || (order.value.merchant_id && order.value.merchant_trade_no))
-  if (hasWechatInfo) {
+  const transactionId = order.value.transaction_id || order.value.transactionId
+  if (transactionId) {
     confirmReceiptWithOfficialComponent()
-  } else {
-    // 没有微信信息则回退到原接口（或提示用户）
-    uni.showModal({
-      title: '提示',
-      content: '当前订单暂不支持微信官方确认收货，请联系客服',
-      showCancel: false
-    })
+    return
   }
+  uni.showModal({
+    title: '提示',
+    content: '当前订单暂不支持微信官方确认收货，请联系客服',
+    showCancel: false
+  })
 }
 
 /** 调起微信官方确认收货组件 */
@@ -1076,6 +1071,9 @@ const confirmReceiptWithOfficialComponent = () => {
 
   // 构建 extraData 参数
   const extraData = {}
+  if (order.value.orderNo) {
+    extraData.merchant_trade_no = order.value.orderNo
+  }
   if (order.value.transaction_id) {
     extraData.transaction_id = order.value.transaction_id
   } else if (order.value.merchant_id && order.value.merchant_trade_no) {
@@ -1206,7 +1204,7 @@ const doConfirmReceive = async () => {
 		console.error('[订单详情] 确认收货失败:', error)
 		const errorMsg = error?.message || error?.msg || error?.errorMsg || '操作失败，请稍后重试'
 		// 微信端未确认收货时：引导用户先去微信内确认，再点「同步收货状态」
-		const isWechatNotConfirmed = /微信端未确认|微信侧未确认|未知状态/i.test(errorMsg)
+		const isWechatNotConfirmed = /微信端未确认|微信侧未确认|未知状态|官方订单尚未确认收货/i.test(errorMsg)
 		if (isWechatNotConfirmed) {
 			uni.showModal({
 				title: '需先在微信内确认收货',

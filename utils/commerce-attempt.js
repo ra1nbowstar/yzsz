@@ -28,7 +28,13 @@ export const postCommerceAttempt = async (request, operation, url, body, explici
     record = { key: explicitKey || `${operation}-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`, url, body: clone(body) }
     uni.setStorageSync(storageKey, clone(record))
   }
-  const attempt = request.post(record.url, clone(record.body), { header: { 'Idempotency-Key': record.key } }).then(result => {
+  const outgoingBody = clone(record.body)
+  // 订单创建同时写入 body。请求头被小程序或代理丢掉时，服务端仍能从 idempotency_key 识别同一次购买。
+  if (operation === 'order-create' && outgoingBody && typeof outgoingBody === 'object' && !Array.isArray(outgoingBody)) {
+    delete outgoingBody.idempotencyKey
+    outgoingBody.idempotency_key = record.key
+  }
+  const attempt = request.post(record.url, outgoingBody, { header: { 'Idempotency-Key': record.key } }).then(result => {
     if (confirmsSuccess && !confirmsSuccess(result)) {
       throw Object.assign(new Error('操作结果尚未确认，请使用原请求重试'), { code: 'ATTEMPT_UNCONFIRMED' })
     }
