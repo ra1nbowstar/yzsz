@@ -60,7 +60,7 @@
             <text class="available-points">可用 {{ availableCount }} 张</text>
           </view>
           <view class="auto-coupon-info">
-            <text class="info-text">已选择 {{ selectedCouponCount }} 张1元券</text>
+            <text class="info-text">已选择 {{ selectedCouponCount }} 张优惠券</text>
             <text class="info-desc">抵扣 ¥{{ couponDiscount }}</text>
             <text class="info-tip">（优先使用即将过期的券）</text>
           </view>
@@ -213,7 +213,6 @@ const paying = ref(false)
 const selectedMethod = ref(1) // 1-微信支付, 2-支付宝, 3-余额支付
 const couponList = ref([])
 const couponLoading = ref(false)
-const selectedCouponIds = ref([])   // 选中的优惠券 ID 数组
 const selectedCouponCount = ref(0)   // 选中的张数
 const loadingCoupons = ref(false)    // 优惠券加载状态
 const disablePoints = ref(true) // No authoritative offline points policy exists.
@@ -231,7 +230,15 @@ const rawResponseText = computed(() => {
     return String(r)
   }
 })
-const couponDiscount = computed(() => selectedCouponCount.value)
+const selectedCoupons = computed(() =>
+  fittingCoupons.value.slice(0, selectedCouponCount.value)
+)
+
+const couponDiscount = computed(() =>
+  selectedCoupons.value.reduce((sum, c) => sum + couponAmount(c), 0)
+)
+
+const selectedCouponIds = computed(() => selectedCoupons.value.map((c) => c.id))
 const availableCoupons = computed(() => {
   const amount = orderAmount.value
   const now = Date.now()
@@ -244,23 +251,52 @@ const availableCoupons = computed(() => {
   })
 })
 
-// 可用的1元券（按过期时间升序）
-const availableOneYuanCoupons = computed(() => {
-  return couponList.value
-    .filter(c => Number(c.amount) === 1 && c.status === 'unused')
-    .sort((a, b) => new Date(a.validTo) - new Date(b.validTo))
+// 可用券（不限面额）：校验 id、状态、门槛、有效期，并按过期时间升序、按 id 去重
+const sortedUsableCoupons = computed(() => {
+  const amount = orderAmount.value
+  const now = Date.now()
+  const filtered = couponList.value
+    .filter((c) => {
+      if (!c || c.id == null) return false
+      if ((c.status || '') !== 'unused') return false
+      if (Number(c.amount) <= 0) return false
+      if (amount < minSpend(c)) return false
+      const to = c.valid_to ?? c.validTo ?? c.expire_time ?? c.expireTime
+      if (to && new Date(to).getTime() < now) return false
+      return true
+    })
+    .sort((a, b) => {
+      const av = a.valid_to ?? a.validTo ?? a.expire_time ?? a.expireTime
+      const bv = b.valid_to ?? b.validTo ?? b.expire_time ?? b.expireTime
+      return new Date(av) - new Date(bv)
+    })
+
+  const seen = new Set()
+  const unique = []
+  for (const c of filtered) {
+    const key = String(c.id)
+    if (seen.has(key)) continue
+    seen.add(key)
+    unique.push(c)
+  }
+  return unique
 })
 
-// 最大可使用张数（由订单原价 - 积分抵扣 向上取整）
-const maxUsableCount = computed(() => {
-  const remaining = Math.max(0, orderAmount.value - pointsDiscount.value)
-  return Math.ceil(remaining)
+// 按面额试放：券面额合计不超过「订单金额 - 积分抵扣」向上取整；放不下的跳过，继续看更小的券
+const fittingCoupons = computed(() => {
+  const cap = Math.ceil(Math.max(0, orderAmount.value - pointsDiscount.value))
+  const picked = []
+  let sum = 0
+  for (const c of sortedUsableCoupons.value) {
+    const amt = couponAmount(c)
+    if (sum + amt > cap + 1e-6) continue
+    picked.push(c)
+    sum += amt
+  }
+  return picked
 })
 
-// 实际可用张数（受库存限制）
-const availableCount = computed(() => {
-  return Math.min(availableOneYuanCoupons.value.length, maxUsableCount.value)
-})
+const availableCount = computed(() => fittingCoupons.value.length)
 
 function couponAmount(c) {
   return Number(c.amount ?? c.template?.amount ?? 0)
@@ -398,11 +434,6 @@ watch(availableCount, (newCount) => {
   if (selectedCouponCount.value > newCount) {
     selectedCouponCount.value = newCount
   }
-}, { immediate: true })
-
-// 监听选择张数变化，更新选中的优惠券 ID 数组
-watch(selectedCouponCount, (newCount) => {
-  selectedCouponIds.value = availableOneYuanCoupons.value.slice(0, newCount).map(c => c.id)
 }, { immediate: true })
 /**
  * 选择支付方式
