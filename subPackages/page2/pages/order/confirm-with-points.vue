@@ -133,7 +133,7 @@
 			</view>
 
       <view class="auto-coupon-info">
-        <text class="info-text">已选择 {{ effectiveCouponUseCount }} 张1元券</text>
+        <text class="info-text">已选择 {{ effectiveCouponUseCount }} 张优惠券</text>
         <text class="info-desc">抵扣 ¥{{ couponDiscount }}</text>
         <text class="info-tip">（优先使用即将过期的券）</text>
       </view>
@@ -171,6 +171,10 @@
       <view v-if="canUsePoints && pointsToUse > 0" class="detail-row discount">
         <text class="detail-label">积分抵扣</text>
         <text class="detail-value">-¥{{ formatAmount(pointsDiscount) }}</text>
+      </view>
+      <view v-if="couponDiscount > 0" class="detail-row discount">
+        <text class="detail-label">优惠券抵扣</text>
+        <text class="detail-value">-¥{{ formatAmount(couponDiscount) }}</text>
       </view>
       <view class="detail-row total">
         <text class="detail-label">实际支付</text>
@@ -247,14 +251,6 @@ const parseCouponAmountYuan = (raw) => {
 	return Number.isFinite(n) ? n : null
 }
 
-/** 是否视为 1 元券（兼容浮点误差，如 0.999999） */
-const isOneYuanAmount = (amountYuan) => {
-	const x = Number(amountYuan)
-	if (!Number.isFinite(x)) return false
-	if (Math.abs(x - 1) < 1e-6) return true
-	return Math.round(x * 100) / 100 === 1
-}
-
 const isCouponUnused = (status) => String(status || '').toLowerCase() === 'unused'
 
 /**
@@ -300,8 +296,9 @@ const displayUnusedCouponCount = computed(() => {
 	if (Number.isFinite(t) && t >= 0) return Math.floor(t)
 	return availableCoupons.value.length
 })
-// 用户选择的优惠券张数（默认使用全部可用）
+// 用户选择的优惠券张数。进入页面先清零，券列表加载后再默认用满可抵扣张数。
 const selectedCouponCount = ref(0)
+const couponSelectionTouched = ref(false)
 const loadingCoupons = ref(true)   // 优惠券数据是否正在加载
 // 配送费（目前为0）
 const deliveryFee = ref(0)
@@ -478,44 +475,30 @@ watch(canUsePoints, (ok) => {
 	if (!ok) pointsToUse.value = 0
 })
 
-// 可用的 1 元券（按过期时间升序；同一 id 只保留一条，避免 coupon_ids 重复）
-const availableOneYuanCoupons = computed(() => {
-  const filtered = availableCoupons.value
-    .filter((coupon) => isOneYuanAmount(coupon.amount) && isCouponUnused(coupon.status))
+// 可用券按到期时间排序。面额不限，2 元、3 元会员券也要能选。
+const sortedUsableCoupons = computed(() => {
+  return availableCoupons.value
+    .filter((coupon) => Number(coupon.amount) > 0 && isCouponUnused(coupon.status) && isCouponValidForOrder(coupon))
     .sort((a, b) => new Date(a.validTo) - new Date(b.validTo))
-  const seen = new Set()
-  const unique = []
-  for (const c of filtered) {
-    if (c.id == null || seen.has(c.id)) continue
-    seen.add(c.id)
-    unique.push(c)
-  }
-  if (filtered.length !== unique.length) {
-    console.warn('[优惠券] 1元券列表存在重复 id，已去重:', { raw: filtered.length, unique: unique.length })
-  }
-  return unique
 })
 
-// 最大可使用张数（由商品原价-积分抵扣 向上取整）
-const maxUsableCount = computed(() => {
-  const value = Math.ceil(Math.max(0, productTotal.value - pointsDiscount.value))
-  console.log('maxUsableCount:', { productTotal: productTotal.value, pointsDiscount: pointsDiscount.value, result: value })
-  return value
+// 券面额合计不能超过「商品金额 - 积分抵扣」向上取整到元。放不下的券跳过，继续看后面面额更小的券。
+const fittingCoupons = computed(() => {
+  const cap = Math.ceil(Math.max(0, productTotal.value - pointsDiscount.value))
+  const picked = []
+  let sum = 0
+  for (const coupon of sortedUsableCoupons.value) {
+    const amount = Number(coupon.amount) || 0
+    if (sum + amount > cap + 1e-6) continue
+    picked.push(coupon)
+    sum += amount
+  }
+  return picked
 })
 
-// 实际可使用的张数（受库存和抵扣上限限制）
-const availableCount = computed(() => {
-  const oneYuanCount = availableOneYuanCoupons.value.length
-  const maxUsable = maxUsableCount.value
-  const count = Math.min(oneYuanCount, maxUsable)
-  console.log('availableCount:', { oneYuanCount, maxUsable, count })
-  return count
-})
+const availableCount = computed(() => fittingCoupons.value.length)
 
 // ========== 优惠券新逻辑 ==========
-// 实际参与组单的张数：必须与 coupon_ids 长度一致（每张 1 元）。
-// 若 selectedCouponCount 大于「当前加载到的 1 元券张数」或大于 availableCount，
-// 仅用 slice 会导致请求里 id 变少、但 couponDiscount 仍按旧张数算，与后端反馈的现象一致。
 const effectiveCouponUseCount = computed(() => {
   const cap = availableCount.value
   const raw = Number(selectedCouponCount.value) || 0
@@ -523,13 +506,13 @@ const effectiveCouponUseCount = computed(() => {
   return Math.max(0, Math.min(raw, cap))
 })
 
-// 自动选中的优惠券 ID（取前 effectiveCouponUseCount 张；1 元券列表已按 id 去重）
-const selectedCouponIds = computed(() => {
-  return availableOneYuanCoupons.value.slice(0, effectiveCouponUseCount.value).map((c) => c.id)
-})
+const selectedCoupons = computed(() => fittingCoupons.value.slice(0, effectiveCouponUseCount.value))
 
-// 优惠券总抵扣金额（每张 1 元）：与 coupon_ids 长度严格一致
-const couponDiscount = computed(() => selectedCouponIds.value.length)
+const selectedCouponIds = computed(() => selectedCoupons.value.map((c) => c.id))
+
+const couponDiscount = computed(() => {
+  return selectedCoupons.value.reduce((sum, coupon) => sum + (Number(coupon.amount) || 0), 0)
+})
 // 实际支付金额
 const actualAmount = computed(() => {
   return Math.max(0, originalAmount.value - pointsDiscount.value - couponDiscount.value)
@@ -665,7 +648,9 @@ const loadAvailableCoupons = async () => {
     loadingCoupons.value = false
     nextTick(() => {
       const cap = availableCount.value
-      if (Number.isFinite(cap) && selectedCouponCount.value > cap) {
+      if (!couponSelectionTouched.value && Number.isFinite(cap)) {
+        selectedCouponCount.value = cap
+      } else if (Number.isFinite(cap) && selectedCouponCount.value > cap) {
         selectedCouponCount.value = cap
       }
     })
@@ -727,12 +712,17 @@ const isCouponValidForOrder = (coupon) => {
 
 // 优惠券张数滑块变化
 const onCouponCountChange = (e) => {
+  couponSelectionTouched.value = true
   selectedCouponCount.value = e.detail.value
 }
 
 // 重新拉券（如 onShow）后可用张数变少时，把滑块记忆值压回上限，避免「显示/本地状态」长期大于真实可组单张数
 watch(availableCount, (cap) => {
   if (!Number.isFinite(cap) || cap < 0) return
+  if (!couponSelectionTouched.value) {
+    selectedCouponCount.value = cap
+    return
+  }
   if (selectedCouponCount.value > cap) {
     selectedCouponCount.value = cap
   }
@@ -855,7 +845,7 @@ const submitFreeOrder = async () => {
   // 👇 添加这几行
   console.log('[零元订单] 当前 selectedCouponIds:', selectedCouponIds.value)
   console.log('[零元订单] 当前 selectedCouponCount:', selectedCouponCount.value)
-  console.log('[零元订单] 可用1元券列表:', availableOneYuanCoupons.value)
+  console.log('[零元订单] 可用优惠券:', fittingCoupons.value)
   console.log('[零元订单] productTotal:', productTotal.value)
   console.log('[零元订单] actualAmount:', actualAmount.value)
   if (!selectedAddress.value) {
@@ -1322,6 +1312,7 @@ onLoad(async (options) => {
 	// 新进入结算页时清零，避免上一笔订单残留的积分/券张数影响本单（页面实例复用或仅触发 onShow 时尤为明显）
 	pointsToUse.value = 0
 	selectedCouponCount.value = 0
+	couponSelectionTouched.value = false
 
 	// 判断订单来源
 		if (options.data) {

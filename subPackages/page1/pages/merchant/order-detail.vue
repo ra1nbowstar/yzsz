@@ -923,7 +923,12 @@ const doConfirmReceiveApi = async () => {
     uni.hideLoading()
     console.error('[商户订单详情] 确认收货失败:', error)
     const errorMsg = error?.message || error?.msg || error?.errorMsg || '操作失败，请稍后重试'
-    uni.showToast({ title: errorMsg, icon: 'none', duration: 2000 })
+    const waitingBuyer = /官方订单尚未确认收货|微信端未确认|微信侧未确认/.test(errorMsg)
+    uni.showToast({
+      title: waitingBuyer ? '请让买家在订单里点确认收货' : errorMsg,
+      icon: 'none',
+      duration: 2000
+    })
   }
 }
 

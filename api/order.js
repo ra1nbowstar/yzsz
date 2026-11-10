@@ -19,7 +19,7 @@ import { postCommerceAttempt } from '@/utils/commerce-attempt.js'
  * @param {Number} data.earnPoints 可获得积分
  */
 export const createOrderWithPoints = (data) => {
-  return request.post('/order/create', data)
+  return postCommerceAttempt(request, 'order-create', '/order/create', data, data && (data.idempotency_key || data.idempotencyKey))
 }
 
 /**

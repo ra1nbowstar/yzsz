@@ -77,7 +77,7 @@ test('explicit key and original body survive timeout and module reconstruction',
   await assert.rejects(reloaded.postCommerceAttempt(request, 'order-create', '/order/create', pending.body, 'override'), { code: 'ATTEMPT_UNRESOLVED' })
   loseResponse = false
   await reloaded.postCommerceAttempt(request, 'order-create', '/order/create', { quantity: 1 })
-  assert.deepEqual(calls, [{ body: { quantity: 1 }, key: 'explicit-K' }, { body: { quantity: 1 }, key: 'explicit-K' }])
+  assert.deepEqual(calls, [{ body: { quantity: 1, idempotency_key: 'explicit-K' }, key: 'explicit-K' }, { body: { quantity: 1, idempotency_key: 'explicit-K' }, key: 'explicit-K' }])
   assert.equal(reloaded.getCommerceAttempt('order-create'), null)
 })
 
