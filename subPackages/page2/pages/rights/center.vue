@@ -88,8 +88,8 @@
 					<text class="ledger-item-time">{{ item.time }}</text>
 				</view>
 				<view class="ledger-item-right">
-					<text class="ledger-item-delta" :class="item.delta > 0 ? 'up' : 'down'">
-						{{ item.delta > 0 ? '+' : '' }}{{ item.delta }} {{ item.assetLabel }}
+					<text class="ledger-item-delta" :class="item.delta > 0 ? 'up' : (item.delta < 0 ? 'down' : '')">
+						{{ formatDelta(item.delta) }} {{ item.assetLabel }}
 					</text>
 					<text class="ledger-item-balance">计量值 {{ item.balanceAfter }}</text>
 				</view>
@@ -109,6 +109,7 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getAssets, formatQty, hasToken } from '@/api/assets.js'
+import { getGodaCouponRecords, getRightsLedger } from '@/api/rights.js'
 
 // null = 未取到（未登录/加载中/失败），展示为 --；0 才是真实零
 const rights = ref({
@@ -232,8 +233,85 @@ const goLedger = () => {
 	uni.navigateTo({ url: '/subPackages/page2/pages/rights/ledger' })
 }
 
+// 事件类型 → 中文；未命中兜底 event_name，并在开发环境提示新编码
+const EVENT_TYPE_LABELS = {
+	rain_daily_settlement: '积分生成雨点',
+	rain_to_coupon: '雨点转优惠券',
+	coupon_issued: '发放优惠券',
+	coupon_expired_to_pool: '优惠券到期入池',
+	points_expiry_backfill: '过期回补积分',
+	coupon_to_egg: '券兑咯哒蛋',
+	egg_issued: '发放咯哒蛋',
+	egg_auto_conversion: '咯哒蛋自动转券',
+	goda_coupon_issued: '自动转券',
+	wine_redemption: '兑换白酒',
+	wine_ownership_transfer: '酒坛权属转移',
+	reversal: '冲正'
+}
+
+const eventLabel = (item) => {
+	if (EVENT_TYPE_LABELS[item.event_type]) return EVENT_TYPE_LABELS[item.event_type]
+	if (process.env.NODE_ENV !== 'production') {
+		console.warn('[权益中心] 未映射的 event_type:', item.event_type)
+	}
+	return item.event_name || '权益变动'
+}
+
+const fmtTime = (v) => {
+	if (!v) return ''
+	const s = String(v).replace('T', ' ')
+	return s.length >= 16 ? s.slice(0, 16) : s
+}
+
+const formatDelta = (v) => {
+	const n = Number(v)
+	if (!Number.isFinite(n)) return ''
+	return (n > 0 ? '+' : '') + formatQty(n)
+}
+
+/** 最近流水（首页取前几条，失败只影响本块） */
+const loadRecentLedger = async () => {
+	if (!hasToken()) { recentLedger.value = []; return }
+	try {
+		const res = await getRightsLedger({ asset_type: 'all', page: 1, page_size: 5 })
+		const data = (res && res.data) || res || {}
+		const items = data.items || data.rows || data.list || []
+		recentLedger.value = items.map((raw) => ({
+			eventType: eventLabel(raw),
+			time: fmtTime(raw.occurred_at),
+			delta: Number(raw.quantity_delta || 0),
+			assetLabel: raw.asset_name || raw.unit || '',
+			balanceAfter: formatQty(raw.balance_after)
+		}))
+	} catch (e) {
+		console.warn('[权益中心] 最近流水加载失败', e)
+		recentLedger.value = []
+	}
+}
+
+/** 咯哒券使用记录（items 字段名待后端确认，先用常见别名兜底） */
+const loadGodaCouponRecords = async () => {
+	if (!hasToken()) { godaCouponRecords.value = []; return }
+	try {
+		const res = await getGodaCouponRecords({ page: 1, page_size: 10 })
+		const data = (res && res.data) || res || {}
+		const items = data.items || data.rows || data.list || []
+		godaCouponRecords.value = items.map((raw) => ({
+			// TODO: items 字段名待后端确认（当前列表为空，未暴露真实字段）
+			title: raw.title || raw.summary || raw.event_name || '咯哒券变动',
+			time: fmtTime(raw.occurred_at || raw.created_at || raw.time),
+			delta: formatDelta(raw.quantity_delta ?? raw.amount ?? raw.delta)
+		}))
+	} catch (e) {
+		console.warn('[权益中心] 咯哒券记录加载失败', e)
+		godaCouponRecords.value = []
+	}
+}
+
 onShow(() => {
 	loadRightsData()
+	loadGodaCouponRecords()
+	loadRecentLedger()
 })
 </script>
 

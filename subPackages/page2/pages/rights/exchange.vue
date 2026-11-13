@@ -69,8 +69,9 @@
 		<view v-if="activeTab === 'records'">
 			<view class="record-item" v-for="(r, i) in conversionRecords" :key="i">
 				<view class="record-left">
-					<text class="record-title">咯哒蛋自动转咯哒券</text>
+					<text class="record-title">{{ r.title }}</text>
 					<text class="record-time">{{ r.time }}</text>
+					<text class="record-unit" v-if="r.unitValueText">触发咯哒值 {{ r.unitValueText }}</text>
 				</view>
 				<view class="record-right">
 					<text class="record-egg">-{{ r.eggQuantity }} 蛋</text>
@@ -85,7 +86,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getRightsOverview } from '@/api/rights.js'
+import { getRightsOverview, getRightsConversions } from '@/api/rights.js'
 import request from '@/utils/request.js'
 import { getCommerceAttempt, postCommerceAttempt } from '@/utils/commerce-attempt.js'
 
@@ -130,6 +131,36 @@ const loadRights = async () => {
 	}
 }
 
+const fmtTime = (v) => {
+	if (!v) return ''
+	const s = String(v).replace('T', ' ')
+	return s.length >= 16 ? s.slice(0, 16) : s
+}
+
+/** 转化记录（items 字段名待后端确认，先用常见别名兜底） */
+const loadConversions = async () => {
+	if (!uni.getStorageSync('token')) { conversionRecords.value = []; return }
+	try {
+		const res = await getRightsConversions({ page: 1, page_size: 20 })
+		const d = (res && res.data) || res || {}
+		const items = d.items || d.rows || d.list || []
+		conversionRecords.value = items.map((raw) => {
+			const uv = raw.unit_value
+			return {
+				// TODO: items 字段名待后端确认（当前列表为空，未暴露真实字段）
+				title: raw.title || raw.summary || raw.event_name || '咯哒蛋自动转咯哒券',
+				time: fmtTime(raw.triggered_at || raw.created_at || raw.time),
+				eggQuantity: formatQty(raw.quantity_converted ?? raw.egg_quantity ?? raw.quantity),
+				godaCoupons: formatQty(raw.goda_coupons_issued ?? raw.goda_coupon_quantity ?? raw.coupons),
+				unitValueText: (uv === null || uv === undefined) ? '--' : formatQty(uv)
+			}
+		})
+	} catch (e) {
+		console.warn('[兑换中心] 转化记录加载失败', e)
+		conversionRecords.value = []
+	}
+}
+
 onShow(() => {
 	const pending = getCommerceAttempt('egg-exchange')
 	if (pending) {
@@ -137,6 +168,7 @@ onShow(() => {
 		unitValue.value = pending.body.expected_unit_value
 	}
 	loadRights()
+	loadConversions()
 })
 
 
@@ -394,6 +426,11 @@ const doExchangeFarm = () => {
 }
 
 .record-time {
+	font-size: 22rpx;
+	color: #999;
+}
+
+.record-unit {
 	font-size: 22rpx;
 	color: #999;
 }

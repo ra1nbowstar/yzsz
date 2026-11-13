@@ -43,3 +43,28 @@ export const exchangeCouponsForEggs = (payload, idempotencyKey) => {
 export const quoteWineRedemption = (payload) => {
   return request.post('/api/v1/wine/redemption-quotes', payload)
 }
+
+/**
+ * 权益流水（本人）
+ * @param {Object} [params] { asset_type, event_type, from, to, page, page_size }
+ *   asset_type: all / point / rain / coupon / egg / goda_coupon
+ */
+export const getRightsLedger = (params = {}) => {
+  return request.get('/api/v1/rights/ledger', params)
+}
+
+/**
+ * 咯哒券变动记录（本人）
+ * @param {Object} [params] { page, page_size }
+ */
+export const getGodaCouponRecords = (params = {}) => {
+  return request.get('/api/v1/rights/goda-coupon-records', params)
+}
+
+/**
+ * 权益转化记录（本人）
+ * @param {Object} [params] { page, page_size }
+ */
+export const getRightsConversions = (params = {}) => {
+  return request.get('/api/v1/rights/conversions', params)
+}
