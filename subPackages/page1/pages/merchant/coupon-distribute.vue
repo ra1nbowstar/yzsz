@@ -20,20 +20,20 @@
         <text class="tip">优惠券将直接发送到该用户的卡包</text>
       </view>
 
-      <!-- 金额设置 -->
+      <!-- 张数设置 -->
       <view class="form-item">
-        <text class="label">优惠金额 (元) *</text>
+        <text class="label">发放张数（张）*</text>
         <view class="input-wrapper">
           <input 
             class="input price" 
             type="number" 
             step="1"
             v-model="formData.amount" 
-            placeholder="0" 
+            placeholder="请输入整数张数" 
             @input="onAmountInput"
           />
         </view>
-        <text class="tip">优惠券将直接发放到用户账户</text>
+        <text class="tip">将发放 N 张 1 元优惠券到该用户账户</text>
       </view>
 
       <!-- 适用商品范围 -->
@@ -114,12 +114,12 @@ import { ref } from 'vue'
 import { distributeCoupon, exchangeCouponsApi} from '@/api/coupon.js'
 
 const submitting = ref(false)
-// 金额输入过滤，只允许整数，禁止小数点
+// 张数输入过滤，只允许整数，禁止小数点
 const onAmountInput = (e) => {
   let val = e.detail.value || e.target.value || ''
   // 如果包含小数点，提示并清除小数点
   if (val.includes('.')) {
-    uni.showToast({ title: '只能输入整数金额', icon: 'none' })
+    uni.showToast({ title: '只能输入整数张数', icon: 'none' })
     val = val.replace(/\./g, '')
   }
   // 移除非数字字符
@@ -199,13 +199,13 @@ const handleDistribute = async () => {
     return uni.showToast({ title: '请输入有效的用户ID', icon: 'none' })
   }
   
-  // 验证优惠金额（整数）
+  // 验证发放张数（正整数）
   if (!formData.value.amount || formData.value.amount.trim() === '') {
-    return uni.showToast({ title: '请输入优惠金额', icon: 'none' })
+    return uni.showToast({ title: '请输入发放张数', icon: 'none' })
   }
-  const amount = String(formData.value.amount).trim()
-  if (!/^[1-9][0-9]*$/.test(amount)) {
-    return uni.showToast({ title: '请输入有效的整数金额（大于0）', icon: 'none' })
+  const count = String(formData.value.amount).trim()
+  if (!/^[1-9][0-9]*$/.test(count)) {
+    return uni.showToast({ title: '请输入有效的整数张数（大于0）', icon: 'none' })
   }
 
   submitting.value = true
@@ -214,8 +214,8 @@ const handleDistribute = async () => {
     // 调用API发放优惠券（coupon_type 固定为 'user'）
     await distributeCoupon({
       user_id: userId,
-      face_value_yuan: amount,
-      quantity: 1,
+      face_value_yuan: '1',        // 面额固定 1 元
+      quantity: Number(count),     // 输入值即张数
       coupon_type: 'user', // 固定为用户优惠券
       applicable_product_type: formData.value.applicable_product_type || 'all'
     })
