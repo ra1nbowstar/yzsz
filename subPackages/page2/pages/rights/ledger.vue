@@ -23,7 +23,7 @@
 					<text class="ledger-item-delta" :class="item.delta > 0 ? 'up' : (item.delta < 0 ? 'down' : '')">
 						{{ item.deltaText }} {{ item.unit }}
 					</text>
-					<text class="ledger-item-balance">计量值 {{ item.balanceAfter }}</text>
+					<text class="ledger-item-balance">{{ item.assetName }}余额 {{ item.balanceAfter }}</text>
 				</view>
 			</view>
 			<view class="ledger-empty" v-if="!loading && ledgerList.length === 0">
@@ -102,6 +102,7 @@ const toItem = (raw) => {
 		delta,
 		deltaText: isOwnershipTransfer ? '权属变更' : ((delta > 0 ? '+' : '') + formatQty(delta)),
 		balanceAfter: formatQty(raw.balance_after),
+		assetName: raw.asset_name || '',
 		unit: isOwnershipTransfer ? '' : (raw.unit || ''),
 		timeText: formatTime(raw.occurred_at)
 	}

@@ -31,7 +31,7 @@
 				</view>
 				<view class="egg-main-item">
 					<text class="egg-main-value">{{ eggData.currentValue }}</text>
-					<text class="egg-main-label">当前权益计量值</text>
+					<text class="egg-main-label">预计咯哒券</text>
 				</view>
 			</view>
 
@@ -91,7 +91,7 @@
 					<text class="ledger-item-delta" :class="item.delta > 0 ? 'up' : (item.delta < 0 ? 'down' : '')">
 						{{ formatDelta(item.delta) }} {{ item.assetLabel }}
 					</text>
-					<text class="ledger-item-balance">计量值 {{ item.balanceAfter }}</text>
+					<text class="ledger-item-balance">{{ item.assetLabel }}余额 {{ item.balanceAfter }}</text>
 				</view>
 			</view>
 			<view class="list-empty" v-if="recentLedger.length === 0">
@@ -140,7 +140,7 @@ const onAssetTap = (item) => {
 const eggData = ref({
 	quantity: '--',         // 持有数量
 	currentUnitValue: '--', // 实时咯哒值
-	currentValue: '--',     // 当前权益计量值（不是可提现金额）
+	currentValue: '--',     // 预计咯哒券值（蛋数 × 实时咯哒值，不是可提现金额）
 	growthRatio: null,      // 增值比例（null 表示规则未确认，不可计算）
 	conversionThreshold: 1  // 转券触发线（后端 conversion_threshold_ratio）
 })
@@ -309,6 +309,12 @@ const loadGodaCouponRecords = async () => {
 }
 
 onShow(() => {
+	// 未登录直接退出，防止通过分享、直达链接进入空白页面
+	if (!hasToken()) {
+		uni.showToast({ title: '请先登录', icon: 'none', duration: 1500 })
+		setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 800)
+		return
+	}
 	loadRightsData()
 	loadGodaCouponRecords()
 	loadRecentLedger()

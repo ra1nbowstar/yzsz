@@ -106,8 +106,8 @@
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
-			<!-- 暂时隐藏权益中心入口,保留代码 -->
-			<view v-if="false" class="menu-item" @tap="goToPage('/subPackages/page2/pages/rights/center')">
+			<!-- 权益中心入口：仅登录后可见 -->
+			<view v-if="isLoggedIn" class="menu-item" @tap="goToPage('/subPackages/page2/pages/rights/center')">
 				<view class="menu-left">
 					<text class="iconfont icon-wodejiangli menu-icon menu-icon-red"></text>
 					<text class="menu-text">权益中心</text>
