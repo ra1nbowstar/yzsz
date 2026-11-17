@@ -26,7 +26,7 @@
 					<text class="egg-main-label">持有数量</text>
 				</view>
 				<view class="egg-main-item">
-					<text class="egg-main-value">{{ eggData.currentUnitValue }}</text>
+					<text class="egg-main-value">{{ formatQty(eggData.currentUnitValue) }}</text>
 					<text class="egg-main-label">实时咯哒值</text>
 				</view>
 				<view class="egg-main-item">
@@ -50,7 +50,7 @@
 			</view>
 
 			<view class="egg-action-btn" @tap="goExchangeCouponToEgg">
-				<text>优惠券兑换咯哒蛋</text>
+				<text>权益兑换</text>
 			</view>
 		</view>
 
@@ -223,7 +223,7 @@ const loadRightsData = async () => {
 	}
 }
 
-/** 优惠券兑换咯哒蛋：跳转权益兑换中心 */
+/** 权益兑换：跳转权益兑换中心 */
 const goExchangeCouponToEgg = () => {
 	uni.navigateTo({ url: '/subPackages/page2/pages/rights/exchange' })
 }
@@ -414,7 +414,7 @@ onShow(() => {
 	font-weight: 600;
 }
 
-/* 优惠券兑换咯哒蛋按钮 */
+/* 权益兑换按钮 */
 .egg-action-btn {
 	margin-top: 24rpx;
 	height: 80rpx;

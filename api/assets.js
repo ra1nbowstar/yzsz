@@ -27,14 +27,14 @@ const toNum = (v) => {
 }
 
 /**
- * 6 位截断 + 去尾零。
- * 保持 String(Number(toFixed(6)))，不要换成正则 replace —— 会把 8000 削成 8。
+ * 4 位截断 + 去尾零。
+ * 保持 String(Number(toFixed(4)))，不要换成正则 replace —— 会把 8000 削成 8。
  */
 export const formatQty = (v) => {
   if (v === null || v === undefined) return '--'
   const n = Number(v)
   if (!Number.isFinite(n)) return '--'
-  return String(Number(n.toFixed(6)))
+  return String(Number(n.toFixed(4)))
 }
 
 /**

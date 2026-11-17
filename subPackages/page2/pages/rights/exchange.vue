@@ -2,11 +2,12 @@
 	<scroll-view class="exchange-page" :scroll-y="true">
 		<view class="exchange-header">
 			<text class="exchange-title">权益兑换中心</text>
-			<text class="exchange-sub">券兑咯哒蛋 · 转化记录</text>
+			<text class="exchange-sub">券兑咯哒蛋 · 蛋兑换咯哒券 · 转化记录</text>
 		</view>
 
 		<view class="exchange-tabs">
 			<view class="exchange-tab" :class="{ active: activeTab === 'egg' }" @tap="activeTab = 'egg'">券兑咯哒蛋</view>
+			<view class="exchange-tab" :class="{ active: activeTab === 'eggToGoda' }" @tap="activeTab = 'eggToGoda'">蛋兑换咯哒券</view>
 			<!-- 暂时隐藏券兑农场实物,保留代码 -->
 			<view v-if="false" class="exchange-tab" :class="{ active: activeTab === 'farm' }" @tap="activeTab = 'farm'">券兑农场实物</view>
 			<view class="exchange-tab" :class="{ active: activeTab === 'records' }" @tap="activeTab = 'records'">转化记录</view>
@@ -21,7 +22,7 @@
 				</view>
 				<view class="panel-row">
 					<text class="panel-label">实时咯哒值</text>
-					<text class="panel-value">{{ unitValue }}</text>
+					<text class="panel-value">{{ formatQty(unitValue) }}</text>
 				</view>
 			</view>
 
@@ -44,6 +45,37 @@
 				</view>
 				<view class="panel-tip">预估口径：券额 × 80% ÷ 实时咯哒值；最终数量以服务端报价为准。</view>
 				<view class="primary-btn" @tap="doExchangeEgg">确认兑换</view>
+			</view>
+		</view>
+
+		<!-- 蛋兑换咯哒券 -->
+		<view v-if="activeTab === 'eggToGoda'">
+			<view class="panel">
+				<view class="panel-row">
+					<text class="panel-label">持有咯哒蛋</text>
+					<text class="panel-value">{{ eggBalance }}</text>
+				</view>
+				<view class="panel-row">
+					<text class="panel-label">实时咯哒值</text>
+					<text class="panel-value">{{ formatQty(unitValue) }}</text>
+				</view>
+			</view>
+
+			<view class="panel">
+				<text class="panel-title">输入兑换蛋数</text>
+				<input class="egg-input" type="digit" v-model="eggInput" placeholder="请输入咯哒蛋数量" />
+				<view class="split-info">
+					<view class="split-item">
+						<text class="split-num">{{ formatQty(unitValue) }}</text>
+						<text class="split-desc">当前咯哒值</text>
+					</view>
+					<view class="split-item">
+						<text class="split-num">{{ godaCouponEstimate }}</text>
+						<text class="split-desc">预计咯哒券</text>
+					</view>
+				</view>
+				<view class="panel-tip">预估口径：蛋数 × 实时咯哒值。转出为咯哒券，仅可用于兑换白酒。</view>
+				<view class="primary-btn" @tap="doExchangeEggToGoda">确认兑换</view>
 			</view>
 		</view>
 
@@ -87,6 +119,7 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getRightsOverview, getRightsConversions } from '@/api/rights.js'
+import { formatQty } from '@/api/assets.js'
 import request from '@/utils/request.js'
 import { getCommerceAttempt, postCommerceAttempt } from '@/utils/commerce-attempt.js'
 
@@ -94,8 +127,10 @@ const activeTab = ref('egg')
 
 // ===== 占位数据（后端接口未提供，暂全部置 0 / 空，接入后替换） =====
 const couponBalance = ref(0)
+const eggBalance = ref('0')
 const unitValue = ref(0)
 const couponInput = ref('')
+const eggInput = ref('')
 
 const eggEstimate = computed(() => {
 	const n = Number(couponInput.value)
@@ -105,16 +140,17 @@ const eggEstimate = computed(() => {
 	return Math.floor((n * 0.8) / v)
 })
 
+const godaCouponEstimate = computed(() => {
+	const n = Number(eggInput.value)
+	if (!Number.isFinite(n) || n <= 0) return '--'
+	const v = Number(unitValue.value)
+	if (!Number.isFinite(v) || v <= 0) return '--'
+	return formatQty(n * v)
+})
+
 const farmProducts = ref([])
 
 const conversionRecords = ref([])
-
-/** 数量为十进制字符串，展示时截断到 6 位再去尾零 */
-const formatQty = (v) => {
-	const n = Number(v)
-	if (!Number.isFinite(n)) return '0'
-	return String(Number(n.toFixed(6)))
-}
 
 /** 拉取本人权益（可用券 + 实时咯哒值） */
 const loadRights = async () => {
@@ -123,6 +159,7 @@ const loadRights = async () => {
 		const res = await getRightsOverview()
 		const d = (res && res.data) || res || {}
 		couponBalance.value = d.coupons?.balance ?? '0'
+		eggBalance.value = d.eggs?.quantity ?? '0'
 		const pending = getCommerceAttempt('egg-exchange')
 		unitValue.value = pending ? pending.body.expected_unit_value : (d.eggs?.current_unit_value ?? '0')
 		if (pending) couponInput.value = pending.body.coupon_quantity
@@ -203,6 +240,10 @@ const doExchangeEgg = async () => {
 		}
 		// 网络结果未知时，持久尝试身份会在重试时复用。
 	}
+}
+
+const doExchangeEggToGoda = () => {
+	uni.showToast({ title: '转化接口暂未开放', icon: 'none' })
 }
 
 const doExchangeFarm = () => {
